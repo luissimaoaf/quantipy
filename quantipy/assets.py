@@ -13,9 +13,10 @@ class Currency(Asset):
         currency: str = 'EUR'
     ):
         super().__init__()
-        self.__cash_like = True
         self.__currency = currency
         
+        self.__cash_like = True
+    
     # Property getters
     
     @property
@@ -37,6 +38,10 @@ class Equity(Asset):
         self.__cash_like = False
         self.__name = name
         self.__symbol = symbol
+        self.__data = None
+        
+    def set_data(self, data):
+        self.__data = data
         
     # Property getters
     
@@ -51,3 +56,7 @@ class Equity(Asset):
     @property
     def symbol(self) -> str:
         return self.__symbol
+    
+    @property
+    def data(self):
+        return self.__data
