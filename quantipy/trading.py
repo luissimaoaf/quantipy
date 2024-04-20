@@ -626,4 +626,11 @@ class Broker:
             self._process_orders()
     
     
-
+class Strategy:
+    
+    def __init__(self):
+        self.__history = None
+    
+    @property
+    def history(self) -> int:
+        return self.__history

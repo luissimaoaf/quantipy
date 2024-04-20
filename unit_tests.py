@@ -25,7 +25,7 @@ def position_test():
     print('Starting positions test...')
     # Creating positions
     eur = quantipy.assets.Currency('EUR')
-    cash_position = quantipy.trading.Position(eur, 10_000)
+    cash_position = quantipy.trading.Position(eur, 10_000_000)
     boeing = quantipy.assets.Equity('Boeing', 'BA')
     boeing_position = quantipy.trading.Position(boeing, 10_000)
 
