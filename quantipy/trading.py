@@ -1,12 +1,13 @@
 
 from typing import Optional, List
 from math import copysign
+import warnings
+from copy import copy
 
 import numpy as np
 import pandas as pd
 
 from quantipy.assets import Asset, Currency
-
 
 
 class Order:
@@ -26,6 +27,7 @@ class Order:
         self.__parent_trade = parent_trade
         self.__order_id = order_id
         self.__broker = broker
+        self.__asset = asset
         
         # Order size
         self.__size = size
@@ -42,7 +44,21 @@ class Order:
             setattr(self, f'_{self.__class__.__qualname__}__{k}', v)
         return self
     
+    def cancel(self):
+        self.__brokers.order.remove(self)
+        trade = self.__parent_trade
+        
+        if trade:
+            if self is trade.stop_loss:
+                trade._replace(__sl_order=None)
+            elif self is trade.take_profit:
+                trade._replace(__tp_order=None)
+    
     # Property getters
+
+    @property
+    def asset(self) -> Asset:
+        return self.__asset
     
     @property
     def size(self) -> float:
@@ -95,14 +111,12 @@ class Trade:
         broker: 'Broker',
         asset: Asset,
         size: float,
-        value: float,
         entry_bar: int,
         entry_price: float,
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
         exit_bar: int = None,
         exit_price: int = None,
-        exit_time = None,
         trade_id: int = None
     ):
         self.__trade_id = trade_id
@@ -111,7 +125,6 @@ class Trade:
         
         # Trade size
         self.__size = size
-        self.__value = value
         
         # Entry data
         self.__entry_bar = entry_bar
@@ -134,30 +147,56 @@ class Trade:
             setattr(self, f'_{self.__class__.__qualname__}__{k}', v)
         return self
     
+    def _copy(self, **kwargs):
+        return copy(self)._replace(**kwargs)
+    
+    def close(self, portion: float = 1.):
+        """Place new `Order` to close `portion` of the trade at next market price."""
+        assert 0 < portion <= 1, "portion must be a fraction between 0 and 1"
+        size = copysign(max(1, round(abs(self.__size) * portion)), -self.__size)
+        order = Order(self.__broker, size, parent_trade=self, tag=self.__tag)
+        self.__broker.orders.insert(0, order)
+    
     # Property getters
     
     @property
     def size(self) -> float:
         return self.__size
             
+    @property
+    def asset(self) -> Asset:
+        return self.__asset
+    
+    @property
+    def _sl_order(self) -> Optional[Order]:
+        return self.__sl_order
+    
+    @property
+    def _tp_order(self) -> Optional[Order]:
+        return self.__tp_order
+    
+    @property
+    def value(self) -> float:
+        pass     
+    
     # Extra properties
     
     @property
     def pnl(self):
-        price = self.__exit_price or self.__broker.last_price
+        price = self.__exit_price or self.__broker.last_price(self.asset)
         
         return self.__size * (price - self.__entry_price)
     
     @property
     def pnl_pct(self):
-        price = self.__exit_price or self.__broker.last_price
+        price = self.__exit_price or self.__broker.last_price(self.asset)
         
         return copysign(1, self.__size) * (price / self.__entry_price - 1)
 
     @property
     def value(self):
         """Trade total value in cash (volume x price)."""
-        price = self.__exit_price or self.__broker.last_price
+        price = self.__exit_price or self.__broker.last_price(self.asset)
         
         return abs(self.__size) * price
     
@@ -204,7 +243,8 @@ class Trade:
             kwargs = {'stop': price} if type == 'sl' else {'limit': price}
             order = self.__broker.new_order(-self.size, trade=self, **kwargs)
             setattr(self, attr, order)
-        
+
+  
 class Position:
     def __init__(
         self,
@@ -212,7 +252,7 @@ class Position:
         size: float
     ):
         self.__asset = asset
-        self.__size = size
+        self.size = size
         
     # Main methods
     
@@ -221,12 +261,8 @@ class Position:
     @property
     def asset(self) -> Asset:
         return self.__asset
-    
-    @property
-    def size(self) -> float:
-        return self.__size
-       
-        
+
+
 class Broker:
     def __init__(
         self,
@@ -236,20 +272,23 @@ class Broker:
         commission_pct: float = 0.002,
         commission_fixed: float = 1.0,
         margin: float = 1.0,
-        trade_on_close: bool = False
+        trade_on_close: bool = False,
+        hedging: bool = False,
+        exclusive_orders: bool = False
     ):
         if not currency.is_cash:
             raise TypeError('ERROR: You must provide an initial cash position.')
         
         # A market is a dictionary with symbols : assets
         self.__data = data
+        self.__i: Optional[int] = None
         
         # Cash account and costs
         self.__initial_capital = initial_capital
         self.__base_currency = currency
         self.cash = Position(currency, initial_capital)
         self.__commission_pct = commission_pct
-        self.__commission_pct = commission_fixed
+        self.__commission_fixed = commission_fixed
         
         # Margin and leverage
         self.__margin = margin
@@ -257,20 +296,42 @@ class Broker:
         
         # Execution specification
         self.__trade_on_close = trade_on_close
+        self.__hedging = hedging
+        self.__exclusive_orders = exclusive_orders
         
         # Trade and order data
         self.orders: List[Order] = []
         self.trades: List[Trade] = []
         self.positions: List[Position] = []
         self.closed_trades: List[Trade] = []
-        
-    def _adjusted_price(self, size=None, price=None) -> float:
+        self.trade_no = 0
+    
+    # Property getters
+    
+    @property
+    def equity(self):
+        return self.cash.size + sum(trade.pnl for trade in self.trades)
+    
+    @property
+    def margin_available(self):
+        margin_used = sum(trade.value/self.__leverage 
+                          for trade in self.trades)
+        return max(0, self.equity - margin_used)
+    
+    # Main methods
+    
+    def last_price(self, asset) -> float:
+        data = self.__data[asset.symbol]
+        return data['Close'].iloc[-1]
+    
+    
+    def _adjusted_price(self, asset, size=None, price=None) -> float:
         """
         Long/short `price`, adjusted for commisions.
         In long positions, the adjusted price is a fraction higher, while in short positions it is a fraction lower.
         """
-        price = price or self.last_price
-        factor = 1 + copysign(self._commission_pct, size)
+        price = price or self.last_price(asset)
+        factor = 1 + copysign(self.__commission_pct, size)
         pct_adjust = price * factor
         fixed_adjust = price + copysign(self.__commission_fixed, size)
         
@@ -278,6 +339,7 @@ class Broker:
             return max(pct_adjust, fixed_adjust)
         else:
             return min(pct_adjust, fixed_adjust)
+    
     
     def _new_order(
         self,
@@ -291,7 +353,7 @@ class Broker:
         parent_trade: Optional[Trade] = None
     ):
         is_long = (size > 0)
-        adjusted_price = self._adjusted_price(size)
+        adjusted_price = self._adjusted_price(asset, size=size)
         
         # Common sense check
         if is_long:
@@ -313,10 +375,22 @@ class Broker:
         order = Order(self, asset, size, limit, stop_loss, stop, take_profit, 
                       order_id, parent_trade)
         
-        # Add the order to the order queue
-        self.orders.insert(0, order)
+        if parent_trade:
+            # Add the order to the order queue
+            self.orders.insert(0, order)
+        else:
+            if self.__exclusive_orders:
+                for old_order in self.orders:
+                    if not old_order.is_contingent:
+                        old_order.cancel()
+                
+                for old_trade in self.trades:
+                    old_trade.close()
+            
+            self.orders.append(order)
         
         return order
+   
     
     def _reduce_trade(
         self,
@@ -346,6 +420,18 @@ class Broker:
 
         self._close_trade(close_trade, price, time_index)
 
+
+    def _close_trade(self, trade: Trade, price: float, time_index: int):
+        self.trades.remove(trade)
+        if trade._sl_order:
+            self.orders.remove(trade._sl_order)
+        if trade.take_profit:
+            self.orders.remove(trade.take_profit)
+
+        self.closed_trades.append(trade._replace(exit_price=price, exit_bar=time_index))
+        self.cash.size += trade.pnl
+
+
     def _close_trade(self, trade: Trade, price: float, time_index: int):
         self.trades.remove(trade)
         if trade._sl_order:
@@ -354,19 +440,40 @@ class Broker:
             self.orders.remove(trade._tp_order)
 
         self.closed_trades.append(trade._replace(exit_price=price, exit_bar=time_index))
-        self._cash += trade.pnl
+        self.cash.size += trade.pnl
+
+
+    def _open_trade(self, asset: Asset, price: float, size: int,
+                    stop_loss: Optional[float], take_profit: Optional[float], time_index: int):
+        trade = Trade(self, asset, size, time_index, price, 
+                      trade_id=self.trade_no)
+
+        self.trade_no += 1
+        
+        self.trades.append(trade)
+        # Create SL/TP (bracket) orders.
+        # Make sure SL order is created first so it gets adversarially processed before TP order
+        # in case of an ambiguous tie (both hit within a single bar).
+        # Note, sl/tp orders are inserted at the front of the list, thus order reversed.
+        if take_profit:
+            trade.__take_profit = take_profit
+        if stop_loss:
+            trade.__stop_loss = stop_loss
+        
         
     def _process_orders(self):
+        
+        reprocess_orders = False
         
         for order in list(self.orders):
             
             asset = order.asset.symbol
-            data = self.data[asset]
+            data = self.__data[asset]
             
-            open = data['Open'][-1]
-            high = data['High'][-1]
-            low = data['Low'][-1]
-            prev_close = data['Close'][-2]
+            open = data['Open'].iloc[-1]
+            high = data['High'].iloc[-1]
+            low = data['Low'].iloc[-1]
+            prev_close = data['Close'].iloc[-2]
             
             if order not in self.orders:
                 continue
@@ -416,6 +523,11 @@ class Broker:
                 )
             
             is_market_order = not order.limit and not stop_price
+            time_index = (
+                len(data) - 2
+                if is_market_order and self.__trade_on_close else
+                len(data) - 1
+            )
             
             if order.parent_trade:
                 trade = order.parent_trade
@@ -426,4 +538,92 @@ class Broker:
                 
                 # trade is still open
                 if trade in self.trades:
-                    self._reduce_trade(trade, price, size)
+                    
+                    self._reduce_trade(trade, price, size, time_index)
+                    assert order.size != -_prev_size or trade not in self.trades
+                if order in (trade._sl_order,
+                             trade._tp_order):
+                    assert order.size == -trade.size
+                    assert order not in self.orders
+                else:
+                    assert abs(_prev_size) >= abs(size) >= 1
+                    self.orders.remove(order)
+                    
+                continue
+            
+            size = order.size
+            adjusted_price = self._adjusted_price(asset, size, price)
+            
+            if -1 < size < 1:
+            
+                size = copysign(int((self.margin_available * self.__leverage * abs(size)) // adjusted_price), size)
+                # Not enough cash/margin even for a single unit
+                if not size:
+                    self.orders.remove(order)
+                    continue
+            assert size == round(size)
+            need_size = int(size)
+            
+            if not self.__hedging:
+                # Fill position by FIFO closing/reducing existing opposite-facing trades.
+                # Existing trades are closed at unadjusted price, because the adjustment
+                # was already made when buying.
+                for trade in list(self.trades):
+                    if trade.is_long == order.is_long:
+                        continue
+                    assert trade.size * order.size < 0
+
+                    # Order size greater than this opposite-directed existing trade,
+                    # so it will be closed completely
+                    if abs(need_size) >= abs(trade.size):
+                        self._close_trade(trade, price, time_index)
+                        need_size += trade.size
+                    else:
+                        # The existing trade is larger than the new order,
+                        # so it will only be closed partially
+                        self._reduce_trade(trade, price, need_size, time_index)
+                        need_size = 0
+
+                    if not need_size:
+                        break
+
+            # If we don't have enough liquidity to cover for the order, cancel it
+            if abs(need_size) * adjusted_price > self.margin_available * self.__leverage:
+                self.orders.remove(order)
+                continue
+
+            # Open a new trade
+            if need_size:
+                self._open_trade(asset,
+                                 adjusted_price,
+                                 need_size,
+                                 order.stop_loss,
+                                 order.take_profit,
+                                 time_index)
+
+                # We need to reprocess the SL/TP orders newly added to the queue.
+                # This allows e.g. SL hitting in the same bar the order was open.
+                # See https://github.com/kernc/backtesting.py/issues/119
+                if order.stop_loss or order.take_profit:
+                    if is_market_order:
+                        reprocess_orders = True
+                    elif (low <= (order.stop_loss or -np.inf) <= high or
+                          low <= (order.take_profit or -np.inf) <= high):
+                        warnings.warn(
+                            f"({data.index[-1]}) A contingent SL/TP order would execute in the "
+                            "same bar its parent stop/limit order was turned into a trade. "
+                            "Since we can't assert the precise intra-candle "
+                            "price movement, the affected SL/TP order will instead be executed on "
+                            "the next (matching) price/bar, making the result (of this trade) "
+                            "somewhat dubious. "
+                            "See https://github.com/kernc/backtesting.py/issues/119",
+                            UserWarning)
+
+            # Order processed
+            self.orders.remove(order)
+
+        if reprocess_orders:
+            self._process_orders()
+    
+    
+
