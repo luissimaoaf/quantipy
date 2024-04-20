@@ -7,7 +7,7 @@ from copy import copy
 import numpy as np
 import pandas as pd
 
-from quantipy.assets import Asset, Currency
+from .assets import Asset, Currency
 
 
 class Order:
@@ -324,6 +324,10 @@ class Broker:
         data = self.__data[asset.symbol]
         return data['Close'].iloc[-1]
     
+    def _replace(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, f'_{self.__class__.__qualname__}__{k}', v)
+        return self
     
     def _adjusted_price(self, asset, size=None, price=None) -> float:
         """
@@ -629,8 +633,21 @@ class Broker:
 class Strategy:
     
     def __init__(self):
-        self.__history = None
+        self.__history = 0
     
     @property
     def history(self) -> int:
         return self.__history
+    
+    def sell(self, broker: Broker = None):
+        pass
+    
+    def buy(self, broker: Broker = None):
+        pass
+    
+    def next(self, broker: Broker = None):
+        pass
+    
+    
+if __name__ == '__main__':
+    print("It worked!")
