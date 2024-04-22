@@ -3,6 +3,7 @@ from typing import Optional, List
 from math import copysign
 import warnings
 from copy import copy
+import sys
 
 import numpy as np
 import pandas as pd
@@ -50,9 +51,9 @@ class Order:
         
         if trade:
             if self is trade.stop_loss:
-                trade._replace(__sl_order=None)
+                trade._replace(sl_order=None)
             elif self is trade.take_profit:
-                trade._replace(__tp_order=None)
+                trade._replace(tp_order=None)
     
     # Property getters
 
@@ -183,13 +184,13 @@ class Trade:
     
     @property
     def pnl(self):
-        price = self.__exit_price or self.__broker.last_price(self.asset)
+        price = self.__exit_price or self.__broker.last_price(self.__asset)
         
         return self.__size * (price - self.__entry_price)
     
     @property
     def pnl_pct(self):
-        price = self.__exit_price or self.__broker.last_price(self.asset)
+        price = self.__exit_price or self.__broker.last_price(self.__asset)
         
         return copysign(1, self.__size) * (price / self.__entry_price - 1)
 
@@ -241,7 +242,7 @@ class Trade:
             order.cancel()
         if price:
             kwargs = {'stop': price} if type == 'sl' else {'limit': price}
-            order = self.__broker.new_order(-self.size, trade=self, **kwargs)
+            order = self.__broker._new_order(-self.size, trade=self, **kwargs)
             setattr(self, attr, order)
 
   
@@ -266,7 +267,7 @@ class Position:
 class Broker:
     def __init__(
         self,
-        data: dict[str: pd.DataFrame],
+        data: dict[str: pd.DataFrame] = None,
         initial_capital: float = 10_000,
         currency: Currency = Currency('EUR'),
         commission_pct: float = 0.002,
@@ -281,7 +282,7 @@ class Broker:
         
         # A market is a dictionary with symbols : assets
         self.__data = data
-        self.__i: Optional[int] = None
+        self.__i = len(list(data.values())[0]) if data else None
         
         # Cash account and costs
         self.__initial_capital = initial_capital
@@ -307,6 +308,10 @@ class Broker:
         self.trade_no = 0
     
     # Property getters
+    
+    @property
+    def _i(self):
+        return self.__i
     
     @property
     def equity(self):
@@ -343,18 +348,17 @@ class Broker:
             return max(pct_adjust, fixed_adjust)
         else:
             return min(pct_adjust, fixed_adjust)
-    
-    
+      
     def _new_order(
         self,
-        order_id: int,
         asset: Asset,
         size: float,
         limit: Optional[float] = None,
         stop: Optional[float] = None,
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
-        parent_trade: Optional[Trade] = None
+        parent_trade: Optional[Trade] = None,
+        order_id: int = None
     ):
         is_long = (size > 0)
         adjusted_price = self._adjusted_price(asset, size=size)
@@ -394,7 +398,6 @@ class Broker:
             self.orders.append(order)
         
         return order
-   
     
     def _reduce_trade(
         self,
@@ -424,18 +427,6 @@ class Broker:
 
         self._close_trade(close_trade, price, time_index)
 
-
-    def _close_trade(self, trade: Trade, price: float, time_index: int):
-        self.trades.remove(trade)
-        if trade._sl_order:
-            self.orders.remove(trade._sl_order)
-        if trade.take_profit:
-            self.orders.remove(trade.take_profit)
-
-        self.closed_trades.append(trade._replace(exit_price=price, exit_bar=time_index))
-        self.cash.size += trade.pnl
-
-
     def _close_trade(self, trade: Trade, price: float, time_index: int):
         self.trades.remove(trade)
         if trade._sl_order:
@@ -445,7 +436,6 @@ class Broker:
 
         self.closed_trades.append(trade._replace(exit_price=price, exit_bar=time_index))
         self.cash.size += trade.pnl
-
 
     def _open_trade(self, asset: Asset, price: float, size: int,
                     stop_loss: Optional[float], take_profit: Optional[float], time_index: int):
@@ -464,15 +454,14 @@ class Broker:
         if stop_loss:
             trade.__stop_loss = stop_loss
         
-        
     def _process_orders(self):
         
         reprocess_orders = False
         
         for order in list(self.orders):
             
-            asset = order.asset.symbol
-            data = self.__data[asset]
+            asset = order.asset
+            data = self.__data[asset.symbol]
             
             open = data['Open'].iloc[-1]
             high = data['High'].iloc[-1]
@@ -528,9 +517,9 @@ class Broker:
             
             is_market_order = not order.limit and not stop_price
             time_index = (
-                len(data) - 2
+                self._i - 1
                 if is_market_order and self.__trade_on_close else
-                len(data) - 1
+                self._i
             )
             
             if order.parent_trade:
@@ -632,20 +621,54 @@ class Broker:
     
 class Strategy:
     
-    def __init__(self):
-        self.__history = 0
+    def __init__(self,
+                 broker: Broker,
+                 history: int = 0):
+        self.__broker = broker
+        self.__history = history
     
     @property
     def history(self) -> int:
         return self.__history
     
-    def sell(self, broker: Broker = None):
-        pass
+    @property
+    def broker(self) -> Broker:
+        return self.__broker
     
-    def buy(self, broker: Broker = None):
-        pass
+    class __FULL_EQUITY(float):  # noqa: N801
+        def __repr__(self): return '.9999'
+        
+    _FULL_EQUITY = __FULL_EQUITY(1 - sys.float_info.epsilon)
     
-    def next(self, broker: Broker = None):
+    def buy(self, 
+            asset: Asset,
+            size: float = _FULL_EQUITY,
+            limit: Optional[float] = None,
+            stop: Optional[float] = None,
+            stop_loss: Optional[float] = None,
+            take_profit: Optional[float] = None
+            ):
+        assert 0 < size < 1 or round(size) == size, \
+            'Size must be a positive fraction of equity or a positive whole number of units'
+        
+        return self.__broker._new_order(asset, size, 
+                                        limit, stop, stop_loss, take_profit)
+        
+    def sell(self, 
+            asset: Asset,
+            size: float = _FULL_EQUITY,
+            limit: Optional[float] = None,
+            stop: Optional[float] = None,
+            stop_loss: Optional[float] = None,
+            take_profit: Optional[float] = None
+            ):
+        assert 0 < size < 1 or round(size) == size, \
+            'Size must be a positive fraction of equity or a positive whole number of units'
+        
+        return self.__broker._new_order(asset, -size, 
+                                        limit, stop, stop_loss, take_profit)
+    
+    def next(self):
         pass
     
     
