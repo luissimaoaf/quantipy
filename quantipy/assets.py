@@ -35,6 +35,7 @@ class Equity(Asset):
         symbol: str
     ):
         super().__init__()
+        self.__type = 'equity'
         self.__cash_like = False
         self.__name = name
         self.__symbol = symbol
@@ -44,6 +45,10 @@ class Equity(Asset):
         self.__data = data
         
     # Property getters
+    
+    @property
+    def type(self) -> str:
+        return self.__type
     
     @property
     def is_cash(self) -> bool:

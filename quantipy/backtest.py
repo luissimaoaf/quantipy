@@ -62,5 +62,10 @@ class Backtester:
             # Run strategy on new tick
             self.__strategy.next()
         
+        for trade in self.__broker.trades:
+            trade.close()
+        
+        broker._process_orders()
+        
         self.__equity = self.__equity[start:]
         return self.__equity

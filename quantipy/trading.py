@@ -155,7 +155,7 @@ class Trade:
         """Place new `Order` to close `portion` of the trade at next market price."""
         assert 0 < portion <= 1, "portion must be a fraction between 0 and 1"
         size = copysign(max(1, round(abs(self.__size) * portion)), -self.__size)
-        order = Order(self.__broker, size, parent_trade=self, tag=self.__tag)
+        order = Order(self.__broker, self.asset, size, parent_trade=self)
         self.__broker.orders.insert(0, order)
     
     # Property getters
@@ -242,7 +242,7 @@ class Trade:
             order.cancel()
         if price:
             kwargs = {'stop': price} if type == 'sl' else {'limit': price}
-            order = self.__broker._new_order(-self.size, trade=self, **kwargs)
+            order = self.__broker._new_order(self.asset, -self.size, parent_trade=self, **kwargs)
             setattr(self, attr, order)
 
   
@@ -428,6 +428,7 @@ class Broker:
         self._close_trade(close_trade, price, time_index)
 
     def _close_trade(self, trade: Trade, price: float, time_index: int):
+        print('\n closed a trade')
         self.trades.remove(trade)
         if trade._sl_order:
             self.orders.remove(trade._sl_order)
@@ -450,9 +451,9 @@ class Broker:
         # in case of an ambiguous tie (both hit within a single bar).
         # Note, sl/tp orders are inserted at the front of the list, thus order reversed.
         if take_profit:
-            trade.__take_profit = take_profit
+            trade.take_profit = take_profit
         if stop_loss:
-            trade.__stop_loss = stop_loss
+            trade.stop_loss = stop_loss
         
     def _process_orders(self):
         
