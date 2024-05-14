@@ -4,6 +4,7 @@ from math import copysign
 import warnings
 from copy import copy
 import sys
+import logging
 
 import numpy as np
 import pandas as pd
@@ -280,6 +281,9 @@ class Broker:
         if not currency.is_cash:
             raise TypeError('ERROR: You must provide an initial cash position.')
         
+        # Logging
+        self.logger = logging.getLogger()
+        
         # A market is a dictionary with symbols : assets
         self.__data = data
         self.__i = len(list(data.values())[0]) if data else None
@@ -428,7 +432,7 @@ class Broker:
         self._close_trade(close_trade, price, time_index)
 
     def _close_trade(self, trade: Trade, price: float, time_index: int):
-        print('\n closed a trade')
+        self.logger.debug('Closed trade')
         self.trades.remove(trade)
         if trade._sl_order:
             self.orders.remove(trade._sl_order)
@@ -478,6 +482,9 @@ class Broker:
                     (high > stop_price) if order.is_long else
                     (low < stop_price)
                 )
+                
+                if is_stop_hit:
+                    self.logger.debug('stop hit')
                 # If stop price wasn't hit, the order isn't active yet
                 if not is_stop_hit:
                     continue
@@ -489,6 +496,9 @@ class Broker:
                     low < order.limit if order.is_long else
                     high > order.limit
                 )
+                
+                if is_limit_hit:
+                    self.logger.debug('limit hit')
                 
                 is_limit_hit_before_stop = (
                     is_limit_hit and

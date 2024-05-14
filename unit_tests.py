@@ -29,8 +29,8 @@ def position_test():
     boeing = quantipy.assets.Equity('Boeing', 'BA')
     boeing_position = quantipy.trading.Position(boeing, 10_000)
 
-    
-if __name__ == '__main__':
+
+def main():
     print('Starting unit tests...')
     
     currency_test()
@@ -38,3 +38,7 @@ if __name__ == '__main__':
     position_test()
     
     print('Done!')
+    
+
+if __name__ == '__main__':
+    main()
