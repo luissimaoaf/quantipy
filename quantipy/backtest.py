@@ -1,5 +1,6 @@
 from functools import partial
 import logging
+import os
 
 import pandas as pd
 import numpy as np
@@ -36,7 +37,7 @@ class Backtester:
         self.__equity = None
         self.__results = None
         
-    def run(self, strategy, save_logs=False, log_file='backtest.log'):
+    def run(self, strategy, log_file='backtest.log', save_logs=False):
         
         if save_logs:
             logging.basicConfig(
@@ -44,6 +45,7 @@ class Backtester:
                 encoding='utf-8',
                 level=logging.DEBUG
                 )
+
         
         self.__strategy = strategy
         self.__broker = strategy.broker
