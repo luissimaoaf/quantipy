@@ -94,3 +94,15 @@ class Backtester:
                           'Strategy': self.__strategy}
         
         return self.__results
+    
+    
+    def process_results(self):
+        pass
+    
+    
+    def plot(self):
+        pass
+    
+    
+    def show_results(self):
+        pass
