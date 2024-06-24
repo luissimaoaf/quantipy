@@ -38,13 +38,6 @@ class Backtester:
         self.__results = None
         
     def run(self, strategy, log_file='backtest.log', save_logs=False):
-        
-        if save_logs:
-            logging.basicConfig(
-                filename=log_file,
-                encoding='utf-8',
-                level=logging.DEBUG
-                )
 
         
         self.__strategy = strategy
@@ -53,6 +46,13 @@ class Backtester:
         
         start = self.__strategy.history + 1
         self.__equity = np.zeros(self.__len_data)
+        
+        if save_logs:
+            logger.setLevel(logging.DEBUG)
+            # create file handler which logs even debug messages
+            fh = logging.FileHandler(log_file)
+            fh.setLevel(logging.DEBUG)
+            logger.addHandler(fh)
         
         # Running the backtest
         logger.debug('Starting backtest...')
