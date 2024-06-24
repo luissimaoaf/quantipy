@@ -282,7 +282,7 @@ class Broker:
             raise TypeError('ERROR: You must provide an initial cash position.')
         
         # Logging
-        self.logger = logging.getLogger()
+        self.logger = logging.getLogger('broker_log')
         
         # A market is a dictionary with symbols : assets
         self.__data = data
