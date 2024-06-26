@@ -16,9 +16,18 @@ import datetime
 
 def compute_drawdown(equity):
     
-    rolling_max = np.maximum.accumulate(equity)
+    rolling_max = equity.cummax()
     tick_dd = equity/rolling_max - 1.0
-    max_dd = np.minimum.accumulate(tick_dd)
+    max_dd = tick_dd.cummin()
+    
+    return [tick_dd, max_dd]
+
+
+def compute_rolling_drawdown(equity, window):
+    
+    rolling_max = equity.rolling(window, min_periods=1).max()
+    tick_dd = equity/rolling_max - 1.0
+    max_dd = tick_dd.rolling(window, min_periods=1).min()
     
     return [tick_dd, max_dd]
             

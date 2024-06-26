@@ -103,7 +103,9 @@ class Backtester:
     
     
     def process_results(self, results):
-        tick_dd, max_dd = quantipy.utils.compute_drawdown(results['equity'])
+        
+        equity = pd.DataFrame(results['equity'])
+        tick_dd, max_dd = quantipy.utils.compute_drawdown(equity)
         
         #placeholder
         results['final_equity'] = results['equity'][-1]
