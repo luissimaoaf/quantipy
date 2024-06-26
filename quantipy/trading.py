@@ -633,10 +633,8 @@ class Broker:
 class Strategy:
     
     def __init__(self,
-                 broker: Broker,
                  assets: List[Asset],
                  params: dict = {}):
-        self.__broker = broker
         self.__assets = assets
         self.__params = params
     
@@ -646,10 +644,6 @@ class Strategy:
             return self.params['history']
         except:
             return 0
-    
-    @property
-    def broker(self) -> Broker:
-        return self.__broker
     
     @property
     def assets(self) -> List[Asset]:
@@ -670,6 +664,7 @@ class Strategy:
     
     def buy(self, 
             asset: Asset,
+            broker: Broker,
             size: float = _FULL_EQUITY,
             limit: Optional[float] = None,
             stop: Optional[float] = None,
@@ -679,11 +674,12 @@ class Strategy:
         assert 0 < size < 1 or round(size) == size, \
             'Size must be a positive fraction of equity or a positive whole number of units'
         
-        return self.__broker._new_order(asset, size, 
+        return broker._new_order(asset, size, 
                                         limit, stop, stop_loss, take_profit)
         
     def sell(self, 
             asset: Asset,
+            broker: Broker,
             size: float = _FULL_EQUITY,
             limit: Optional[float] = None,
             stop: Optional[float] = None,
@@ -693,7 +689,7 @@ class Strategy:
         assert 0 < size < 1 or round(size) == size, \
             'Size must be a positive fraction of equity or a positive whole number of units'
         
-        return self.__broker._new_order(asset, -size, 
+        return broker._new_order(asset, -size, 
                                         limit, stop, stop_loss, take_profit)
     
     def next(self):

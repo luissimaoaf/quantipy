@@ -1,5 +1,5 @@
-
 from typing import Optional, List
+from copy import deepcopy
 from functools import partial
 from itertools import product
 import logging
@@ -8,6 +8,7 @@ import os
 import pandas as pd
 import numpy as np
 
+import quantipy.utils
 from quantipy.assets import Currency
 from quantipy.trading import Broker, Strategy
 
@@ -41,11 +42,11 @@ class Backtester:
         self.__results = None
         
         
-    def run(self, strategy, log_file='backtest.log', save_logs=False):
+    def run(self, strategy, broker, log_file='backtest.log', save_logs=False):
 
         self.__strategy = strategy
-        self.__broker = strategy.broker
-        logger = self.__broker.logger
+        self.__broker = broker
+        logger = broker.logger
         # not sure why +1 is bugging out
         start = self.__strategy.history + 2
         self.__equity = np.zeros(self.__len_data)
@@ -65,7 +66,7 @@ class Backtester:
             data = {k : v.iloc[:i] for k, v in data.items()}
                 
             # Update the broker with new i
-            broker = self.__broker._replace(data = data, i = i)
+            broker = broker._replace(data = data, i = i)
             
             # Process the orders
             broker._process_orders()
@@ -79,7 +80,7 @@ class Backtester:
                 break
             
             # Run strategy on new tick
-            self.__strategy.next()
+            self.__strategy.next(broker)
         
         # Closing all remaining open trades
         for trade in self.__broker.trades:
@@ -91,16 +92,26 @@ class Backtester:
         self.__equity[i] = broker.equity
         self.__equity = self.__equity[start:]
         
-        self.__results = {'Equity': self.__equity,
-                          'Trades': broker.closed_trades,
-                          'Data': data,
-                          'Strategy': self.__strategy}
+        results = {'equity': self.__equity,
+                   'trades': broker.closed_trades,
+                   'data': data,
+                   'strategy': self.__strategy}
+        
+        self.process_results(results)
         
         return self.__results
     
     
-    def process_results(self):
-        pass
+    def process_results(self, results):
+        tick_dd, max_dd = quantipy.utils.compute_drawdown(results['equity'])
+        
+        #placeholder
+        results['final_equity'] = results['equity'][-1]
+        results['tick_drawdown'] = tick_dd
+        results['drawdown'] =  max_dd
+        results['max_drawdown'] = min(tick_dd)
+        
+        self.__results = results
     
     
     def plot(self):
@@ -111,26 +122,26 @@ class Backtester:
         pass
     
     
-    def optimize(self, strategy, param_grid, target='equity'):
+    def optimize(self, strategy, broker, param_grid, target='final_equity'):
 
         def dict_combinations(d):
             for vcomb in product(*d.values()):
                 yield dict(zip(d.keys(), vcomb))
 
         param_combinations = dict_combinations(param_grid)
-        max_equity = -np.inf
+        max_score = -np.inf
         best_params = {}
                 
         for params in param_combinations:
             strategy.params = params
-            self.run(strategy)
+            print(params)
+            new_broker = deepcopy(broker)
+            self.run(strategy, new_broker)
             
-            if self.__equity[-1] > max_equity:
-                best_params = params
-                max_equity = self.__equity[-1]
-        
-        opt_results = {'best_params': best_params,
-                       'max equity': max_equity}
+            if self.__results[target] > max_score:
+                opt_results = self.__results
+                max_score = opt_results[target]
+                opt_results['best_params'] = params
         
         return opt_results
                 
