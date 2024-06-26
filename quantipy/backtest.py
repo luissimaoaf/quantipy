@@ -1,4 +1,7 @@
+
+from typing import Optional, List
 from functools import partial
+from itertools import product
 import logging
 import os
 
@@ -37,14 +40,14 @@ class Backtester:
         self.__equity = None
         self.__results = None
         
+        
     def run(self, strategy, log_file='backtest.log', save_logs=False):
 
-        
         self.__strategy = strategy
         self.__broker = strategy.broker
         logger = self.__broker.logger
-        
-        start = self.__strategy.history + 1
+        # not sure why +1 is bugging out
+        start = self.__strategy.history + 2
         self.__equity = np.zeros(self.__len_data)
         
         if save_logs:
@@ -88,7 +91,7 @@ class Backtester:
         self.__equity[i] = broker.equity
         self.__equity = self.__equity[start:]
         
-        self.__results = {'Equity' : self.__equity,
+        self.__results = {'Equity': self.__equity,
                           'Trades': broker.closed_trades,
                           'Data': data,
                           'Strategy': self.__strategy}
@@ -106,3 +109,28 @@ class Backtester:
     
     def show_results(self):
         pass
+    
+    
+    def optimize(self, strategy, param_grid, target='equity'):
+
+        def dict_combinations(d):
+            for vcomb in product(*d.values()):
+                yield dict(zip(d.keys(), vcomb))
+
+        param_combinations = dict_combinations(param_grid)
+        max_equity = -np.inf
+        best_params = {}
+                
+        for params in param_combinations:
+            strategy.params = params
+            self.run(strategy)
+            
+            if self.__equity[-1] > max_equity:
+                best_params = params
+                max_equity = self.__equity[-1]
+        
+        opt_results = {'best_params': best_params,
+                       'max equity': max_equity}
+        
+        return opt_results
+                

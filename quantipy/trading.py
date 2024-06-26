@@ -634,17 +634,34 @@ class Strategy:
     
     def __init__(self,
                  broker: Broker,
-                 history: int = 0):
+                 assets: List[Asset],
+                 params: dict = {}):
         self.__broker = broker
-        self.__history = history
+        self.__assets = assets
+        self.__params = params
     
     @property
     def history(self) -> int:
-        return self.__history
+        try:
+            return self.params['history']
+        except:
+            return 0
     
     @property
     def broker(self) -> Broker:
         return self.__broker
+    
+    @property
+    def assets(self) -> List[Asset]:
+        return self.__assets
+    
+    @property
+    def params(self) -> dict:
+        return self.__params
+    
+    @params.setter
+    def params(self, params: dict = {}):
+        self.__params = params
     
     class __FULL_EQUITY(float):  # noqa: N801
         def __repr__(self): return '.9999'
