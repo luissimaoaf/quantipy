@@ -75,7 +75,7 @@ class Backtester:
             self.__equity[i] = broker.equity
             
             if self.__equity[i] <= 0:
-                self.__equity[i] = 0
+                self.__equity = self.__equity[:i+1]
                 logger.warning('Out of equity.')
                 break
             
@@ -87,6 +87,7 @@ class Backtester:
             trade.close()
         
         broker._process_orders()
+        broker.logger.debug(broker.trades)
         
         # Final update to equity
         self.__equity[i] = broker.equity
@@ -94,7 +95,6 @@ class Backtester:
         
         results = {'equity': self.__equity,
                    'trades': broker.closed_trades,
-                   'data': data,
                    'strategy': self.__strategy}
         
         self.__results = results
@@ -111,14 +111,20 @@ class Backtester:
         # returns
         results['final_equity'] = results['equity'][-1]
         
-        
         returns = _utils.compute_returns(results['equity'])
         results['returns'] = returns
         results['log_returns'] = np.log(results['returns'])
         results['avg_loss'] = _utils.avg_loss(returns)
+        results['volatility'] = _utils.volatility(returns)
+        results['sharpe'] = _utils.sharpe(returns)
+        
+        returns = pd.DataFrame(returns)
+        results['rolling_sharpe'] = _utils.rolling_sharpe(returns)
         
         # trades
         results['time_in_market'] = _utils.time_in_market(returns)
+        results['trades'] = self.__broker.closed_trades
+        results['trade_count'] = len(results['trades'])
         
         # drawdown calculations
         results['tick_drawdown'] = tick_dd
@@ -155,24 +161,30 @@ class Backtester:
     
     
     def optimize(self, strategy, broker, param_grid,
-                 target='final_equity', minimize=False):
+                 target='final_equity', minimize=False,
+                 save_logs=False):
 
         param_combinations = _utils.dict_combinations(param_grid)
         max_score = -np.inf
         sign = -1 if minimize else 1
-                
+        broker.logger.debug('starting optimization...')
+        
         for params in param_combinations:
             strategy.params = params
             print(params)
+            broker.logger.debug(params)
             new_broker = deepcopy(broker)
-            self.run(strategy, new_broker)
+            self.run(strategy, new_broker, save_logs=save_logs)
             self.process_results()
             
             new_score = self.__results[target] * sign
+            print(f'Score: {new_score}')
+            broker.logger.debug(f'Score: {new_score}')
             if new_score > max_score:
                 opt_results = self.__results
                 max_score = opt_results[target]
                 opt_results['best_params'] = params
         
+        opt_results['broker'] = broker
         return opt_results
                 

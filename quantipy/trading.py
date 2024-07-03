@@ -246,6 +246,9 @@ class Trade:
             order = self.__broker._new_order(self.asset, -self.size, parent_trade=self, **kwargs)
             setattr(self, attr, order)
 
+    @property
+    def is_long(self):
+        return (self.size > 0)
   
 class Position:
     def __init__(
@@ -316,6 +319,10 @@ class Broker:
     @property
     def _i(self):
         return self.__i
+    
+    @property
+    def data(self):
+        return self.__data
     
     @property
     def equity(self):
@@ -674,8 +681,8 @@ class Strategy:
         assert 0 < size < 1 or round(size) == size, \
             'Size must be a positive fraction of equity or a positive whole number of units'
         
-        return broker._new_order(asset, size, 
-                                        limit, stop, stop_loss, take_profit)
+        return broker._new_order(asset, size, limit, stop, 
+                                 stop_loss, take_profit)
         
     def sell(self, 
             asset: Asset,
@@ -695,6 +702,146 @@ class Strategy:
     def next(self):
         pass
     
+
+class MovingAverage(Strategy):
+    def __init__(self, assets, params):
+        super().__init__(assets, params)
     
+    @property
+    def asset(self):
+        return self._Strategy__assets[0]
+    
+    @property
+    def history(self):
+        return self.params['history']
+    
+    @property
+    def sign(self):
+        return self.params['sign']
+    
+    def next(self, broker):
+        for asset in self.assets:
+            # update sma
+            data = broker.data[asset.symbol]
+            ma = sum(data['Close'][-self.history:])/self.history
+            
+            # rule
+            trades = [trade for trade in broker.trades if trade.asset == asset]
+            if (ma - broker.last_price(self.asset)) * self.sign > 0:
+                if len(trades) == 0:
+                    self.buy(asset, broker)
+                    broker.logger.debug('long signal')
+                elif trades[0].size < 0:
+                    trades[0].close()
+                    broker.logger.debug('closed short position')
+            else:
+                if len(trades) == 0:
+                    self.sell(asset, broker)
+                    broker.logger.debug('short signal')
+                elif trades[0].size > 0:
+                    trades[0].close()
+                    broker.logger.debug('closed long position')
+
+
+class DoubleMovingAverage(Strategy):
+    def __init__(self, assets, params):
+        super().__init__(assets, params)
+    
+    @property
+    def asset(self):
+        return self._Strategy__assets[0]
+    
+    @property
+    def history(self):
+        return max(self.history1, self.history2)
+    
+    @property
+    def history1(self):
+        return self.params['history1']
+    
+    @property
+    def history2(self):
+        return self.params['history2']
+    
+    @property
+    def sign(self):
+        return self.params['sign']
+    
+    def next(self, broker):
+        for asset in self.assets:
+            # update sma
+            data = broker.data[asset.symbol]
+            sma1 = sum(data['Close'][-self.history1:])/self.history1
+            sma2 = sum(data['Close'][-self.history2:])/self.history2
+            
+            # rule
+            trades = [trade for trade in broker.trades if trade.asset == asset]
+            if (sma1 - sma2) * self.sign > 0:
+                if len(trades) == 0:
+                    self.buy(asset, broker)
+                    broker.logger.debug('long signal')
+                elif trades[0].size < 0:
+                    trades[0].close()
+                    broker.logger.debug('closed short position')
+            else:
+                if len(trades) == 0:
+                    self.sell(asset, broker)
+                    broker.logger.debug('short signal')
+                elif trades[0].size > 0:
+                    trades[0].close()
+                    broker.logger.debug('closed long position')
+
+
+class TripleMovingAverage(Strategy):
+    def __init__(self, assets, params):
+        super().__init__(assets, params)
+    
+    @property
+    def asset(self):
+        return self._Strategy__assets[0]
+    
+    @property
+    def history(self):
+        return max(self.history1, self.history2)
+    
+    @property
+    def history1(self):
+        return self.params['history1']
+    
+    @property
+    def history2(self):
+        return self.params['history2']
+    
+    @property
+    def history3(self):
+        return self.params['history3']
+    
+    
+    def next(self, broker):
+        for asset in self.assets:
+            # update sma's
+            data = broker.data[asset.symbol]
+            ma1 = sum(data['Close'][-self.history1:])/self.history1
+            ma2 = sum(data['Close'][-self.history2:])/self.history2
+            ma3 = sum(data['Close'][-self.history2:])/self.history3
+            
+            # rule
+            trades = [trade for trade in broker.trades if trade.asset == asset]
+            if len(trades) == 0:
+                if ma1 > ma2 > ma3:
+                    self.buy(asset, broker)
+                    broker.logger.debug('long signal')
+                elif ma1 < ma2 < ma3:
+                    self.sell(asset, broker)
+                    broker.logger.debug('short signal')
+            else:
+                if ma1 < ma2 and trades[0].size > 0:
+                    trades[0].close()
+                    broker.logger.debug('liquidate long position') 
+                elif ma1 > ma2 and trades[0].size < 0:
+                        trades[0].close()
+                        broker.logger.debug('liquidate short position')
+
+
 if __name__ == '__main__':
     print("It worked!")

@@ -44,19 +44,18 @@ def compute_drawdown_length(dd):
             drawdown_lengths.append(length)
             length = 0
     
+    if drawdown_lengths == [] and length > 0:
+        drawdown_lengths = [length]
     return drawdown_lengths
             
 
 def compute_returns(equity):
-    
     return (equity[1:] - equity[:-1])/equity[1:]
 
 
 def time_in_market(returns):
-    
     ticks_out = (abs(returns) < 1e-16)
     tim = 1 - sum(ticks_out)/len(returns)
-    
     return tim
 
 
@@ -64,6 +63,32 @@ def avg_loss(returns):
     loss = returns[returns < 0]
     
     return loss.mean()
+
+
+def volatility(returns, periods=252, annualize=True):
+    std = returns.std()
+    if annualize:
+        return std * np.sqrt(periods)
+    return std
+
+
+def sharpe(returns, periods=252, rf=0.0, annualize=True):
+    res = returns.mean() / volatility(returns, periods, annualize)
+    return res * np.sqrt(periods)
+
+
+def rolling_sharpe(returns, window = 50, periods=252, rf=0.0, annualize=True):
+    
+    d = returns.rolling(window).mean()
+    q = returns.rolling(window).std()
+    
+    return d/q * np.sqrt(periods)
+    
+
+
+def moving_average(prices, window):
+    return sum(prices)/window
+
 
 def dict_combinations(d):
     for vcomb in product(*d.values()):
