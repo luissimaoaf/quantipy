@@ -8,7 +8,7 @@ import os
 import pandas as pd
 import numpy as np
 
-import quantipy.utils
+from . import utils as _utils
 from quantipy.assets import Currency
 from quantipy.trading import Broker, Strategy
 
@@ -106,14 +106,29 @@ class Backtester:
         
         results = self.__results
         equity = pd.DataFrame(results['equity'])
-        tick_dd, max_dd = quantipy.utils.compute_drawdown(equity)
+        tick_dd, max_dd = _utils.compute_drawdown(equity)
         
-        #placeholder
+        # returns
         results['final_equity'] = results['equity'][-1]
+        
+        
+        returns = _utils.compute_returns(results['equity'])
+        results['returns'] = returns
+        results['log_returns'] = np.log(results['returns'])
+        results['avg_loss'] = _utils.avg_loss(returns)
+        
+        # trades
+        results['time_in_market'] = _utils.time_in_market(returns)
+        
+        # drawdown calculations
         results['tick_drawdown'] = tick_dd
         results['drawdown'] =  max_dd
         results['max_drawdown'] = min(tick_dd)
         results['avg_drawdown'] = tick_dd.mean()
+        
+        dd_length = _utils.compute_drawdown_length(tick_dd[0])
+        results['avg_drawdown_length'] = np.mean(dd_length)
+        results['longest_drawdown'] = max(dd_length)
         
         self.__results = results
         
@@ -127,7 +142,7 @@ class Backtester:
         
         equity = self.__results['equity']
         equity = pd.DataFrame(equity)
-        dd, rolling_dd = quantipy.utils.compute_rolling_drawdown(equity, window)
+        dd, rolling_dd = _utils.compute_rolling_drawdown(equity, window)
         self.__results['rolling_dd'] = rolling_dd
     
     
@@ -139,10 +154,12 @@ class Backtester:
         pass
     
     
-    def optimize(self, strategy, broker, param_grid, target='final_equity'):
+    def optimize(self, strategy, broker, param_grid,
+                 target='final_equity', minimize=False):
 
-        param_combinations = quantipy.utils.dict_combinations(param_grid)
+        param_combinations = _utils.dict_combinations(param_grid)
         max_score = -np.inf
+        sign = -1 if minimize else 1
                 
         for params in param_combinations:
             strategy.params = params
@@ -151,7 +168,8 @@ class Backtester:
             self.run(strategy, new_broker)
             self.process_results()
             
-            if self.__results[target] > max_score:
+            new_score = self.__results[target] * sign
+            if new_score > max_score:
                 opt_results = self.__results
                 max_score = opt_results[target]
                 opt_results['best_params'] = params

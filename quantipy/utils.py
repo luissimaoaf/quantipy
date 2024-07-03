@@ -31,8 +31,40 @@ def compute_rolling_drawdown(equity, window):
     max_dd = tick_dd.rolling(window, min_periods=1).min()
     
     return [tick_dd, max_dd]
+
+
+def compute_drawdown_length(dd):
+    
+    drawdown_lengths = []
+    length = 0
+    for i in range(len(dd)):
+        if dd[i] < 0:
+            length +=1
+        elif length > 0:
+            drawdown_lengths.append(length)
+            length = 0
+    
+    return drawdown_lengths
             
-            
+
+def compute_returns(equity):
+    
+    return (equity[1:] - equity[:-1])/equity[1:]
+
+
+def time_in_market(returns):
+    
+    ticks_out = (abs(returns) < 1e-16)
+    tim = 1 - sum(ticks_out)/len(returns)
+    
+    return tim
+
+
+def avg_loss(returns):
+    loss = returns[returns < 0]
+    
+    return loss.mean()
+
 def dict_combinations(d):
     for vcomb in product(*d.values()):
         yield dict(zip(d.keys(), vcomb))
