@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import datetime
+from itertools import product
 
 
 
@@ -31,5 +32,8 @@ def compute_rolling_drawdown(equity, window):
     
     return [tick_dd, max_dd]
             
-        
+            
+def dict_combinations(d):
+    for vcomb in product(*d.values()):
+        yield dict(zip(d.keys(), vcomb))
         

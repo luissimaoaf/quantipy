@@ -97,13 +97,14 @@ class Backtester:
                    'data': data,
                    'strategy': self.__strategy}
         
-        self.process_results(results)
+        self.__results = results
         
         return self.__results
     
     
-    def process_results(self, results):
+    def process_results(self, rolling: int = None):
         
+        results = self.__results
         equity = pd.DataFrame(results['equity'])
         tick_dd, max_dd = quantipy.utils.compute_drawdown(equity)
         
@@ -115,6 +116,19 @@ class Backtester:
         results['avg_drawdown'] = tick_dd.mean()
         
         self.__results = results
+        
+        if rolling:
+            self.add_rolling_drawdown(rolling)
+            
+        return self.__results
+        
+        
+    def add_rolling_drawdown(self, window):
+        
+        equity = self.__results['equity']
+        equity = pd.DataFrame(equity)
+        dd, rolling_dd = quantipy.utils.compute_rolling_drawdown(equity, window)
+        self.__results['rolling_dd'] = rolling_dd
     
     
     def plot(self):
@@ -127,19 +141,15 @@ class Backtester:
     
     def optimize(self, strategy, broker, param_grid, target='final_equity'):
 
-        def dict_combinations(d):
-            for vcomb in product(*d.values()):
-                yield dict(zip(d.keys(), vcomb))
-
-        param_combinations = dict_combinations(param_grid)
+        param_combinations = quantipy.utils.dict_combinations(param_grid)
         max_score = -np.inf
-        best_params = {}
                 
         for params in param_combinations:
             strategy.params = params
             print(params)
             new_broker = deepcopy(broker)
             self.run(strategy, new_broker)
+            self.process_results()
             
             if self.__results[target] > max_score:
                 opt_results = self.__results
