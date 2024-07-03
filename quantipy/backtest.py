@@ -112,6 +112,7 @@ class Backtester:
         results['tick_drawdown'] = tick_dd
         results['drawdown'] =  max_dd
         results['max_drawdown'] = min(tick_dd)
+        results['avg_drawdown'] = tick_dd.mean()
         
         self.__results = results
     
