@@ -102,7 +102,7 @@ class Backtester:
         return self.__results
     
     
-    def process_results(self, rolling: int = None):
+    def process_results(self, rolling: int = 252):
         
         results = self.__results
         equity = pd.DataFrame(results['equity'])
@@ -119,7 +119,10 @@ class Backtester:
         results['sharpe'] = _utils.sharpe(returns)
         
         returns = pd.DataFrame(returns)
-        results['rolling_sharpe'] = _utils.rolling_sharpe(returns)
+        results['rolling_sharpe'] = _utils.rolling_sharpe(
+            returns,
+            window=rolling
+        )
         
         # trades
         results['time_in_market'] = _utils.time_in_market(returns)

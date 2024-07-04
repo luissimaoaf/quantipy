@@ -11,7 +11,6 @@ import pandas as pd
 
 from .assets import Asset, Currency
 
-
 class Order:
     def __init__(
         self,
@@ -635,8 +634,7 @@ class Broker:
 
         if reprocess_orders:
             self._process_orders()
-    
-    
+       
 class Strategy:
     
     def __init__(self,
@@ -841,7 +839,7 @@ class TripleMovingAverage(Strategy):
                 elif ma1 > ma2 and trades[0].size < 0:
                         trades[0].close()
                         broker.logger.debug('liquidate short position')
-
+     
 
 if __name__ == '__main__':
     print("It worked!")

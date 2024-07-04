@@ -73,8 +73,10 @@ def volatility(returns, periods=252, annualize=True):
 
 
 def sharpe(returns, periods=252, rf=0.0, annualize=True):
-    res = returns.mean() / volatility(returns, periods, annualize)
-    return res * np.sqrt(periods)
+    res = returns.mean() / returns.std()
+    if annualize: 
+        return res * np.sqrt(periods)
+    return res
 
 
 def rolling_sharpe(returns, window = 50, periods=252, rf=0.0, annualize=True):
@@ -82,8 +84,10 @@ def rolling_sharpe(returns, window = 50, periods=252, rf=0.0, annualize=True):
     d = returns.rolling(window).mean()
     q = returns.rolling(window).std()
     
-    return d/q * np.sqrt(periods)
-    
+    if annualize:
+        return d/q * np.sqrt(periods)
+    else:
+        return d/q
 
 
 def moving_average(prices, window):
