@@ -81,7 +81,7 @@ class Backtester:
             self.__strategy.next(broker)
         
         # Closing all remaining open trades
-        for trade in self.__broker.trades:
+        for trade in broker.trades:
             trade.close()
         
         broker._process_orders()
@@ -131,8 +131,8 @@ class Backtester:
         # drawdown calculations
         results['tick_drawdown'] = tick_dd
         results['drawdown'] =  max_dd
-        results['max_drawdown'] = min(tick_dd)
-        results['avg_drawdown'] = tick_dd.mean()
+        results['max_drawdown'] = min(tick_dd.values)[0]
+        results['avg_drawdown'] = tick_dd.mean()[0]
         
         dd_length = _utils.compute_drawdown_length(tick_dd[0])
         results['avg_drawdown_length'] = np.mean(dd_length)
@@ -152,13 +152,42 @@ class Backtester:
         equity = pd.DataFrame(equity)
         dd, rolling_dd = _utils.compute_rolling_drawdown(equity, window)
         self.__results['rolling_dd'] = rolling_dd
+
     
+    def show_results(self, results):
+        title = 'Backtest Results'
+        separator = '-'*25
+        
+        # Strategy data
+        vol = f"{'Volatility:':<15}{results['volatility']:>10.4f}"
+        sharpe = f"{'Sharpe Ratio:':<15}{results['sharpe']:>10.4f}"
+        avg_loss = f"{'Avg loss (bar):':<15}{results['avg_loss']:>10.2%}"
+        max_dd = f"{'Max Drawdown:':<15}{results['max_drawdown']:>10.2%}"
+        avg_dd = f"{'Avg Drawdown:':<15}{results['avg_drawdown']:>10.2%}"
+        dd_len = f"{'Avg DD Bars:':<15}{results['avg_drawdown_length']:>10.2f}"
+        dd_len_max = f"{'Longest DD:':<15}{results['longest_drawdown']:>10}"
+        
+        # Trade data
+        trades = f"{'Trades:':<15}{results['trade_count']:>10}"
+        exposure = f"{'Time in Market:':<15}{results['time_in_market']:>10.2%}"
+        
+        print(
+            title,
+            separator,
+            vol, sharpe, avg_loss,
+            separator,
+            max_dd, avg_dd, dd_len, dd_len_max,
+            separator,
+            trades, exposure,
+            sep="\n"
+        )
+   
     
-    def plot(self):
+    def equity_plot(self, results):
         pass
     
     
-    def show_results(self):
+    def underwater_plot(self, results):
         pass
     
     
