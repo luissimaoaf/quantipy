@@ -36,16 +36,14 @@ class Backtester:
             exclusive_orders = exclusive_orders
         ) """
         
-        self.__broker = None
-        self.__strategy = None
         self.__equity = None
+        self.__backtest = None
         self.__results = None
         
         
     def run(self, strategy, broker, log_file='backtest.log', save_logs=False):
 
         self.__strategy = strategy
-        self.__broker = broker
         logger = broker.logger
         # not sure why +1 is bugging out
         start = self.__strategy.history + 2
@@ -97,14 +95,16 @@ class Backtester:
                    'trades': broker.closed_trades,
                    'strategy': self.__strategy}
         
-        self.__results = results
+        self.__backtest = results
         
-        return self.__results
+        return self.__backtest
     
     
-    def process_results(self, rolling: int = 252):
+    def process_results(self, results=None, rolling: int = 252):
         
-        results = self.__results
+        if results is None:
+            results = self.__backtest
+        
         equity = pd.DataFrame(results['equity'])
         tick_dd, max_dd = _utils.compute_drawdown(equity)
         
@@ -126,7 +126,6 @@ class Backtester:
         
         # trades
         results['time_in_market'] = _utils.time_in_market(returns)
-        results['trades'] = self.__broker.closed_trades
         results['trade_count'] = len(results['trades'])
         
         # drawdown calculations
