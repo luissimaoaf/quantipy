@@ -130,6 +130,12 @@ class Backtester:
         # trades
         results['time_in_market'] = _utils.time_in_market(results['returns'])
         results['trade_count'] = len(results['trades'])
+        results['best_trade_win'] = _utils.best_win(results['trades'])
+        results['worst_trade_loss'] = _utils.worst_loss(results['trades'])
+        results['avg_trade_win'] = _utils.avg_trade_win(results['trades'])
+        results['avg_trade_loss'] = _utils.avg_trade_loss(results['trades'])
+        results['wl_ratio'] = _utils.wl_ratio(results['trades'])
+        results['win_pct'] = _utils.win_pct(results['trades'])
         
         # drawdown calculations
         results['tick_drawdown'] = tick_dd
@@ -165,9 +171,10 @@ class Backtester:
         
         # Strategy data
         cum_ret = f"{'Total Return:':<15}{results['cum_return']:>10.2%}"
+        avg_loss = f"{'Avg loss (day):':<15}{results['avg_loss']:>10.2%}"
+        avg_gain = f"{'Avg gain (day):':<15}{results['avg_gain']:>10.2%}"
         vol = f"{'Volatility:':<15}{results['volatility']:>10.4f}"
         sharpe = f"{'Sharpe Ratio:':<15}{results['sharpe']:>10.4f}"
-        avg_loss = f"{'Avg loss (bar):':<15}{results['avg_loss']:>10.2%}"
         max_dd = f"{'Max Drawdown:':<15}{results['max_drawdown']:>10.2%}"
         avg_dd = f"{'Avg Drawdown:':<15}{results['avg_drawdown']:>10.2%}"
         dd_len = f"{'Avg DD Bars:':<15}{results['avg_drawdown_length']:>10.0f}"
@@ -176,16 +183,25 @@ class Backtester:
         # Trade data
         trades = f"{'Trades:':<15}{results['trade_count']:>10}"
         exposure = f"{'Time in Market:':<15}{results['time_in_market']:>10.2%}"
+        best_win = f"{'Best Win:':<15}{results['best_trade_win']:>10.2%}"
+        avg_trade_win = f"{'Avg Win:':<15}{results['avg_trade_win']:>10.2%}"
+        worst_loss = f"{'Worst Loss:':<15}{results['worst_trade_loss']:>10.2%}"
+        avg_trade_loss = f"{'Avg Loss:':<15}{results['avg_trade_loss']:>10.2%}"
+        wl_ratio = f"{'Win/Loss ratio:':<15}{results['wl_ratio']:>10.2f}"
+        win_pct = f"{'Win %:':<15}{results['win_pct']:>10.2%}"
         
         print(
             title,
             separator,
             label, separator,
-            cum_ret, vol, sharpe, avg_loss,
+            cum_ret, avg_gain, avg_loss, vol, sharpe,
             separator,
             max_dd, avg_dd, dd_len, dd_len_max,
             separator,
             trades, exposure,
+            best_win, avg_trade_win, 
+            worst_loss, avg_trade_loss,
+            wl_ratio, win_pct,
             sep="\n"
         )
    

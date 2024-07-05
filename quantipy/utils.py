@@ -63,6 +63,47 @@ def avg_gain(returns):
     return gain.mean()
 
 
+def avg_trade_win(trades):
+    trade_wins = [trade.pnl_pct for trade in trades if trade.pnl>0]
+    if len(trade_wins) > 0:
+        return np.mean(trade_wins)
+    else:
+        return 0
+
+
+def best_win(trades):
+    trade_pnls = [trade.pnl_pct for trade in trades if trade.pnl_pct > 0]
+    if len(trade_pnls) > 0:
+        return max(trade_pnls)
+    else:
+        return 0
+
+
+def worst_loss(trades):    
+    trade_pnls = [trade.pnl_pct for trade in trades if trade.pnl_pct <= 0]
+    if len(trade_pnls) > 0:
+        return min(trade_pnls)
+    else:
+        return 0
+
+def avg_trade_loss(trades):
+    trade_loss = [trade.pnl_pct for trade in trades if trade.pnl<=0]
+    if len(trade_loss) > 0:
+        return np.mean(trade_loss)
+    else:
+        return 0
+
+
+def wl_ratio(trades):
+    wins = len([trade for trade in trades if trade.pnl>0])
+    return wins/(len(trades) - wins)
+
+
+def win_pct(trades):
+    wins = len([trade for trade in trades if trade.pnl>0])
+    return wins/len(trades)
+
+
 def volatility(returns, periods=252, annualize=True):
     std = returns.std()
     if annualize:
