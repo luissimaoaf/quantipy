@@ -800,7 +800,7 @@ class TripleMovingAverage(Strategy):
     
     @property
     def history(self):
-        return max(self.history1, self.history2)
+        return max(self.history1, self.history2, self.history3)
     
     @property
     def history1(self):

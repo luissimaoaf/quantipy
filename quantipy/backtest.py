@@ -114,7 +114,10 @@ class Backtester:
         returns = _utils.compute_returns(results['equity'])
         results['returns'] = returns
         results['log_returns'] = np.log(results['returns'])
+        results['cum_return'] = _utils.cum_return(results['equity'])
+        
         results['avg_loss'] = _utils.avg_loss(returns)
+        results['avg_gain'] = _utils.avg_gain(returns)
         results['volatility'] = _utils.volatility(returns)
         results['sharpe'] = _utils.sharpe(returns)
         
@@ -125,7 +128,7 @@ class Backtester:
         )
         
         # trades
-        results['time_in_market'] = _utils.time_in_market(returns)
+        results['time_in_market'] = _utils.time_in_market(results['returns'])
         results['trade_count'] = len(results['trades'])
         
         # drawdown calculations
@@ -156,15 +159,18 @@ class Backtester:
     
     def show_results(self, results):
         title = 'Backtest Results'
-        separator = '-'*25
+        separator = '-'*40
+        
+        label = f"{'Metric':<15}{'Strategy':>10}{'Benchmark':>15}"
         
         # Strategy data
+        cum_ret = f"{'Total Return:':<15}{results['cum_return']:>10.2%}"
         vol = f"{'Volatility:':<15}{results['volatility']:>10.4f}"
         sharpe = f"{'Sharpe Ratio:':<15}{results['sharpe']:>10.4f}"
         avg_loss = f"{'Avg loss (bar):':<15}{results['avg_loss']:>10.2%}"
         max_dd = f"{'Max Drawdown:':<15}{results['max_drawdown']:>10.2%}"
         avg_dd = f"{'Avg Drawdown:':<15}{results['avg_drawdown']:>10.2%}"
-        dd_len = f"{'Avg DD Bars:':<15}{results['avg_drawdown_length']:>10.2f}"
+        dd_len = f"{'Avg DD Bars:':<15}{results['avg_drawdown_length']:>10.0f}"
         dd_len_max = f"{'Longest DD:':<15}{results['longest_drawdown']:>10}"
         
         # Trade data
@@ -174,7 +180,8 @@ class Backtester:
         print(
             title,
             separator,
-            vol, sharpe, avg_loss,
+            label, separator,
+            cum_ret, vol, sharpe, avg_loss,
             separator,
             max_dd, avg_dd, dd_len, dd_len_max,
             separator,

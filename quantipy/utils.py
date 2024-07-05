@@ -4,6 +4,10 @@ import datetime
 from itertools import product
 
 
+def cum_return(equity):
+    return equity[-1]/equity[0] - 1
+
+
 def compute_drawdown(equity):
     
     rolling_max = equity.cummax()
@@ -52,6 +56,11 @@ def avg_loss(returns):
     loss = returns[returns < 0]
     
     return loss.mean()
+
+
+def avg_gain(returns):
+    gain = returns[returns > 0]
+    return gain.mean()
 
 
 def volatility(returns, periods=252, annualize=True):
