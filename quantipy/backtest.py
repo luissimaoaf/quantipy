@@ -7,6 +7,7 @@ import os
 
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
 from . import utils as _utils
 from quantipy.assets import Currency
@@ -22,6 +23,9 @@ class Backtester:
         # Should check if this is ok
         # Assumes every entry has the same length
         self.__len_data = len(list(data.values())[0])
+        
+        # getting dates
+        self.__dates = list(data.values())[0].index
         
         # Partially initialize the broker object without data
         """ self.__broker = partial(
@@ -39,6 +43,7 @@ class Backtester:
         self.__equity = None
         self.__backtest = None
         self.__results = None
+        self.__benchmark = None
         
         
     def run(self, strategy, broker, log_file='backtest.log', save_logs=False):
@@ -47,8 +52,9 @@ class Backtester:
         logger = broker.logger
         # not sure why +1 is bugging out
         start = self.__strategy.history + 2
-        self.__equity = np.zeros(self.__len_data)
-        
+        equity = np.zeros(self.__len_data)
+        self.__equity = pd.Series(equity, index=self.__dates)
+                
         if save_logs:
             logger.setLevel(logging.DEBUG)
             # create file handler which logs even debug messages
@@ -69,11 +75,12 @@ class Backtester:
             # Process the orders
             broker._process_orders()
             
-            # Update equity
-            self.__equity[i] = broker.equity
             
-            if self.__equity[i] <= 0:
-                self.__equity = self.__equity[:i+1]
+            # Update equity
+            self.__equity.iloc[i] = broker.equity
+            
+            if self.__equity.iloc[i] <= 0:
+                self.__equity = self.__equity.iloc[:i+1]
                 logger.warning('Out of equity.')
                 break
             
@@ -88,8 +95,8 @@ class Backtester:
         broker.logger.debug(broker.trades)
         
         # Final update to equity
-        self.__equity[i] = broker.equity
-        self.__equity = self.__equity[start:]
+        self.__equity.iloc[i] = broker.equity
+        self.__equity = self.__equity.iloc[start:]
         
         results = {'equity': self.__equity,
                    'trades': broker.closed_trades,
@@ -100,29 +107,56 @@ class Backtester:
         return self.__backtest
     
     
-    def process_results(self, results=None, rolling: int = 252):
+    def process_results(
+        self,
+        results=None,
+        rolling: int = 126,
+        benchmark: str = None
+    ):
+        if benchmark:
+            self.__benchmark = benchmark
         
         if results is None:
             results = self.__backtest
         
-        equity = pd.DataFrame(results['equity'])
-        tick_dd, max_dd = _utils.compute_drawdown(equity)
+        bm_equity = self.__data[benchmark]['Close']
+
+        tick_dd, max_dd = _utils.compute_drawdown(results['equity'])
+        bm_tick_dd, bm_max_dd = _utils.compute_drawdown(bm_equity)
         
         # returns
-        results['final_equity'] = results['equity'][-1]
+        results['final_equity'] = results['equity'].iloc[-1]
+        results['bm_final_equity'] = bm_equity[-1]
         
         returns = _utils.compute_returns(results['equity'])
+        bm_returns = _utils.compute_returns(bm_equity)
+        
         results['returns'] = returns
+        results['bm_returns'] = bm_returns
+        
         results['log_returns'] = np.log(results['returns'])
+        results['bm_log_returns'] = np.log(results['bm_returns'])
+        
         results['cum_return'] = _utils.cum_return(results['equity'])
+        results['bm_cum_return'] = _utils.cum_return(bm_equity)
         
         results['avg_loss'] = _utils.avg_loss(returns)
         results['avg_gain'] = _utils.avg_gain(returns)
         results['volatility'] = _utils.volatility(returns)
         results['sharpe'] = _utils.sharpe(returns)
+        results['sortino'] = _utils.sortino(returns)
+        results['bm_avg_loss'] = _utils.avg_loss(bm_returns)
+        results['bm_avg_gain'] = _utils.avg_gain(bm_returns)
+        results['bm_volatility'] = _utils.volatility(bm_returns)
+        results['bm_sharpe'] = _utils.sharpe(bm_returns)
+        results['bm_sortino'] = _utils.sortino(bm_returns)
         
         returns = pd.DataFrame(returns)
         results['rolling_sharpe'] = _utils.rolling_sharpe(
+            returns,
+            window=rolling
+        )
+        results['rolling_sortino'] = _utils.rolling_sortino(
             returns,
             window=rolling
         )
@@ -140,17 +174,25 @@ class Backtester:
         # drawdown calculations
         results['tick_drawdown'] = tick_dd
         results['drawdown'] =  max_dd
-        results['max_drawdown'] = min(tick_dd.values)[0]
-        results['avg_drawdown'] = tick_dd.mean()[0]
+        results['max_drawdown'] = min(tick_dd.values)
+        results['avg_drawdown'] = tick_dd.mean()
+        # benchmark drawdown calculations
+        results['bm_tick_drawdown'] = bm_tick_dd
+        results['bm_drawdown'] =  bm_max_dd
+        results['bm_max_drawdown'] = min(bm_tick_dd.values)
+        results['bm_avg_drawdown'] = bm_tick_dd.mean()
         
-        dd_length = _utils.compute_drawdown_length(tick_dd[0])
+        dd_length = _utils.compute_drawdown_length(tick_dd)
         results['avg_drawdown_length'] = np.mean(dd_length)
         results['longest_drawdown'] = max(dd_length)
         
+        bm_dd_length = _utils.compute_drawdown_length(bm_tick_dd)
+        results['bm_avg_drawdown_length'] = np.mean(bm_dd_length)
+        results['bm_longest_drawdown'] = max(bm_dd_length)
+        
         self.__results = results
         
-        if rolling:
-            self.add_rolling_drawdown(rolling)
+        self.add_rolling_drawdown(rolling)
             
         return self.__results
         
@@ -163,26 +205,29 @@ class Backtester:
         self.__results['rolling_dd'] = rolling_dd
 
     
-    def show_results(self, results):
+    def show_results(self):
+        results = self.__results
+        
         title = 'Backtest Results'
         separator = '-'*40
         
         label = f"{'Metric':<15}{'Strategy':>10}{'Benchmark':>15}"
         
         # Strategy data
-        cum_ret = f"{'Total Return:':<15}{results['cum_return']:>10.2%}"
-        avg_loss = f"{'Avg loss (day):':<15}{results['avg_loss']:>10.2%}"
-        avg_gain = f"{'Avg gain (day):':<15}{results['avg_gain']:>10.2%}"
-        vol = f"{'Volatility:':<15}{results['volatility']:>10.4f}"
-        sharpe = f"{'Sharpe Ratio:':<15}{results['sharpe']:>10.4f}"
-        max_dd = f"{'Max Drawdown:':<15}{results['max_drawdown']:>10.2%}"
-        avg_dd = f"{'Avg Drawdown:':<15}{results['avg_drawdown']:>10.2%}"
-        dd_len = f"{'Avg DD Bars:':<15}{results['avg_drawdown_length']:>10.0f}"
-        dd_len_max = f"{'Longest DD:':<15}{results['longest_drawdown']:>10}"
+        cum_ret = f"{'Total Return:':<15}{results['cum_return']:>10.2%}{results['bm_cum_return']:>15.2%}"
+        avg_loss = f"{'Avg loss (day):':<15}{results['avg_loss']:>10.2%}{results['bm_avg_loss']:>15.2%}"
+        avg_gain = f"{'Avg gain (day):':<15}{results['avg_gain']:>10.2%}{results['bm_avg_gain']:>15.2%}"
+        vol = f"{'Volatility:':<15}{results['volatility']:>10.4f}{results['bm_volatility']:>15.4f}"
+        sharpe = f"{'Sharpe Ratio:':<15}{results['sharpe']:>10.4f}{results['bm_sharpe']:>15.4f}"
+        sortino = f"{'Sortino Ratio:':<15}{results['sortino']:>10.4f}{results['bm_sortino']:>15.4f}"
+        max_dd = f"{'Max Drawdown:':<15}{results['max_drawdown']:>10.2%}{results['bm_max_drawdown']:>15.2%}"
+        avg_dd = f"{'Avg Drawdown:':<15}{results['avg_drawdown']:>10.2%}{results['bm_avg_drawdown']:>15.2%}"
+        dd_len = f"{'Avg DD Bars:':<15}{results['avg_drawdown_length']:>10.0f}{results['bm_avg_drawdown_length']:>15.0f}"
+        dd_len_max = f"{'Longest DD:':<15}{results['longest_drawdown']:>10}{results['bm_longest_drawdown']:>15}"
         
         # Trade data
         trades = f"{'Trades:':<15}{results['trade_count']:>10}"
-        exposure = f"{'Time in Market:':<15}{results['time_in_market']:>10.2%}"
+        exposure = f"{'Time in Market:':<15}{results['time_in_market']:>10.2%}{'100%':>15}"
         best_win = f"{'Best Win:':<15}{results['best_trade_win']:>10.2%}"
         avg_trade_win = f"{'Avg Win:':<15}{results['avg_trade_win']:>10.2%}"
         worst_loss = f"{'Worst Loss:':<15}{results['worst_trade_loss']:>10.2%}"
@@ -194,11 +239,12 @@ class Backtester:
             title,
             separator,
             label, separator,
-            cum_ret, avg_gain, avg_loss, vol, sharpe,
+            cum_ret, avg_gain, avg_loss, vol,
+            sharpe, sortino,
             separator,
             max_dd, avg_dd, dd_len, dd_len_max,
             separator,
-            trades, exposure,
+            exposure, trades, 
             best_win, avg_trade_win, 
             worst_loss, avg_trade_loss,
             wl_ratio, win_pct,
@@ -206,17 +252,78 @@ class Backtester:
         )
    
     
-    def equity_plot(self, results):
-        pass
+    def equity_plot(self):
+        plt.figure()
+        plt.title('Equity Plot')
+        
+        strat_equity = self.__equity/self.__equity[0]-1
+        history = self.__strategy.history
+        plt.plot(strat_equity, label='Strategy')
+        
+        if self.__benchmark:
+            benchmark = self.__data[self.__benchmark]['Close'].iloc[history:]
+            plt.plot(benchmark/benchmark[0]-1, label='Benchmark')
+        
+        plt.gca().set_yticklabels([f'{x:.0%}' for x in plt.gca().get_yticks()])
+        plt.legend()
+        plt.axhline(0, color='black')
+        plt.xticks(rotation=45)
+        plt.show()
     
     
-    def underwater_plot(self, results):
-        pass
+    def underwater_plot(self):
+        plt.figure()
+        plt.title('Underwater plot')
+        
+        plt.plot(self.__results['tick_drawdown'], label='Drawdown (tick)')
+        plt.plot(self.__results['drawdown'], label='Maximum Drawdown')
+        
+        dd = self.__results['avg_drawdown']
+        plt.axhline(dd, color='red', linestyle='--', label='Average Drawdown')
+        
+        plt.gca().set_yticklabels([f'{x:.0%}' for x in plt.gca().get_yticks()])
+        plt.axhline(0, color='black')
+        plt.xticks(rotation=45)
+        plt.legend()
+        plt.show()
+        
+    
+    def rolling_sharpe_plot(self):
+        plt.figure()
+        plt.title('Rolling Sharpe Ratio')
+        plt.plot(self.__results['rolling_sharpe'])
+        
+        sharpe = self.__results['sharpe']
+        plt.axhline(sharpe, color='red', linestyle='--')
+        
+        plt.axhline(0, color='black')
+        plt.xticks(rotation=45)
+        plt.show()
+
+
+    def rolling_sortino_plot(self):
+        plt.figure()
+        plt.title('Rolling Sortino Ratio')
+        plt.plot(self.__results['rolling_sortino'])
+        
+        sortino = self.__results['sortino']
+        plt.axhline(sortino, color='red', linestyle='--')
+        plt.axhline(0, color='black')
+        plt.xticks(rotation=45)
+        plt.show()
+    
+    
+    def show_report(self):
+        self.show_results()
+        self.equity_plot()
+        self.underwater_plot()
+        self.rolling_sharpe_plot()
+        self.rolling_sortino_plot()
     
     
     def optimize(self, strategy, broker, param_grid,
                  target='final_equity', minimize=False,
-                 save_logs=False):
+                 save_logs=False, benchmark=None):
 
         param_combinations = _utils.dict_combinations(param_grid)
         max_score = -np.inf
@@ -229,7 +336,7 @@ class Backtester:
             broker.logger.debug(params)
             new_broker = deepcopy(broker)
             self.run(strategy, new_broker, save_logs=save_logs)
-            self.process_results()
+            self.process_results(benchmark=benchmark)
             
             new_score = self.__results[target] * sign
             print(f'Score: {new_score}')
@@ -240,5 +347,7 @@ class Backtester:
                 opt_results['best_params'] = params
         
         opt_results['broker'] = broker
+        
+        self.__results = opt_results
         return opt_results
                 

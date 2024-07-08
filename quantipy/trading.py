@@ -766,28 +766,27 @@ class DoubleMovingAverage(Strategy):
         return self.params['sign']
     
     def next(self, broker):
-        for asset in self.assets:
-            # update sma
-            data = broker.data[asset.symbol]
-            sma1 = sum(data['Close'][-self.history1:])/self.history1
-            sma2 = sum(data['Close'][-self.history2:])/self.history2
-            
-            # rule
-            trades = [trade for trade in broker.trades if trade.asset == asset]
-            if (sma1 - sma2) * self.sign > 0:
-                if len(trades) == 0:
-                    self.buy(asset, broker)
-                    broker.logger.debug('long signal')
-                elif trades[0].size < 0:
-                    trades[0].close()
-                    broker.logger.debug('closed short position')
-            else:
-                if len(trades) == 0:
-                    self.sell(asset, broker)
-                    broker.logger.debug('short signal')
-                elif trades[0].size > 0:
-                    trades[0].close()
-                    broker.logger.debug('closed long position')
+        # update sma
+        data = broker.data[self.asset.symbol]
+        sma1 = sum(data['Close'][-self.history1:])/self.history1
+        sma2 = sum(data['Close'][-self.history2:])/self.history2
+        
+        # rule
+        trades = [trade for trade in broker.trades if trade.asset == self.asset]
+        if (sma1 - sma2) * self.sign > 0:
+            if len(trades) == 0:
+                self.buy(self.asset, broker)
+                broker.logger.debug('long signal')
+            elif trades[0].size < 0:
+                trades[0].close()
+                broker.logger.debug('closed short position')
+        else:
+            if len(trades) == 0:
+                self.sell(self.asset, broker)
+                broker.logger.debug('short signal')
+            elif trades[0].size > 0:
+                trades[0].close()
+                broker.logger.debug('closed long position')
 
 
 class TripleMovingAverage(Strategy):
@@ -816,29 +815,29 @@ class TripleMovingAverage(Strategy):
     
     
     def next(self, broker):
-        for asset in self.assets:
-            # update sma's
-            data = broker.data[asset.symbol]
-            ma1 = sum(data['Close'][-self.history1:])/self.history1
-            ma2 = sum(data['Close'][-self.history2:])/self.history2
-            ma3 = sum(data['Close'][-self.history2:])/self.history3
-            
-            # rule
-            trades = [trade for trade in broker.trades if trade.asset == asset]
-            if len(trades) == 0:
-                if ma1 > ma2 > ma3:
-                    self.buy(asset, broker)
-                    broker.logger.debug('long signal')
-                elif ma1 < ma2 < ma3:
-                    self.sell(asset, broker)
-                    broker.logger.debug('short signal')
-            else:
-                if ma1 < ma2 and trades[0].size > 0:
+        
+        # update sma's
+        data = broker.data[self.asset.symbol]
+        ma1 = sum(data['Close'][-self.history1:])/self.history1
+        ma2 = sum(data['Close'][-self.history2:])/self.history2
+        ma3 = sum(data['Close'][-self.history2:])/self.history3
+        
+        # rule
+        trades = [trade for trade in broker.trades if trade.asset == self.asset]
+        if len(trades) == 0:
+            if ma1 > ma2 > ma3:
+                self.buy(self.asset, broker)
+                broker.logger.debug('long signal')
+            elif ma1 < ma2 < ma3:
+                self.sell(self.asset, broker)
+                broker.logger.debug('short signal')
+        else:
+            if ma1 < ma2 and trades[0].size > 0:
+                trades[0].close()
+                broker.logger.debug('liquidate long position') 
+            elif ma1 > ma2 and trades[0].size < 0:
                     trades[0].close()
-                    broker.logger.debug('liquidate long position') 
-                elif ma1 > ma2 and trades[0].size < 0:
-                        trades[0].close()
-                        broker.logger.debug('liquidate short position')
+                    broker.logger.debug('liquidate short position')
      
 
 if __name__ == '__main__':

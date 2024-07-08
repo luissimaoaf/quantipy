@@ -19,8 +19,9 @@ def compute_drawdown(equity):
 
 def compute_rolling_drawdown(equity, window):
     
+    cum_max = equity.cummax()
     rolling_max = equity.rolling(window, min_periods=1).max()
-    tick_dd = equity/rolling_max - 1.0
+    tick_dd = equity/cum_max - 1.0
     max_dd = tick_dd.rolling(window, min_periods=1).min()
     
     return [tick_dd, max_dd]
@@ -43,7 +44,7 @@ def compute_drawdown_length(dd):
             
 
 def compute_returns(equity):
-    return (equity[1:] - equity[:-1])/equity[1:]
+    return (equity - equity.shift(1))/equity.shift(1)
 
 
 def time_in_market(returns):
@@ -119,15 +120,39 @@ def sharpe(returns, periods=252, rf=0.0, annualize=True):
 
 
 def rolling_sharpe(returns, window = 50, periods=252, rf=0.0, annualize=True):
-    
     d = returns.rolling(window).mean()
     q = returns.rolling(window).std()
+    res = d/q
     
     if annualize:
-        return d/q * np.sqrt(periods)
+        return res * np.sqrt(periods)
     else:
-        return d/q
+        return res
+    
+    
+def sortino(returns, periods=252, rf=0.0, annualize=True): 
+    downside = np.sqrt((returns[returns < 0] ** 2).sum() / len(returns))
+    res = returns.mean() / downside
+    
+    if annualize:
+        return res * np.sqrt(periods)
+    else:
+        return res
 
+def rolling_sortino(returns, window = 50, periods=252, rf=0.0, annualize=True):
+    downside = (
+        returns.rolling(window).apply(
+            lambda x: (x.values[x.values < 0] ** 2).sum()
+        )
+        / window
+    )
+    res = (returns.rolling(window).mean() / np.sqrt(downside))
+    
+    if annualize:
+        return res * np.sqrt(periods)
+    else:
+        return res
+    
 
 def moving_average(prices, window):
     return sum(prices)/window
