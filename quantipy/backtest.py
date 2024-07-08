@@ -8,6 +8,7 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (10,5)
 
 from . import utils as _utils
 from quantipy.assets import Currency
@@ -54,7 +55,8 @@ class Backtester:
         start = self.__strategy.history + 2
         equity = np.zeros(self.__len_data)
         self.__equity = pd.Series(equity, index=self.__dates)
-                
+        self.__history = start
+        
         if save_logs:
             logger.setLevel(logging.DEBUG)
             # create file handler which logs even debug messages
@@ -129,7 +131,7 @@ class Backtester:
         results['bm_final_equity'] = bm_equity[-1]
         
         returns = _utils.compute_returns(results['equity'])
-        bm_returns = _utils.compute_returns(bm_equity)
+        bm_returns = _utils.compute_returns(bm_equity)[self.__history:]
         
         results['returns'] = returns
         results['bm_returns'] = bm_returns
@@ -145,13 +147,23 @@ class Backtester:
         results['volatility'] = _utils.volatility(returns)
         results['sharpe'] = _utils.sharpe(returns)
         results['sortino'] = _utils.sortino(returns)
+        
         results['bm_avg_loss'] = _utils.avg_loss(bm_returns)
         results['bm_avg_gain'] = _utils.avg_gain(bm_returns)
         results['bm_volatility'] = _utils.volatility(bm_returns)
         results['bm_sharpe'] = _utils.sharpe(bm_returns)
         results['bm_sortino'] = _utils.sortino(bm_returns)
         
-        returns = pd.DataFrame(returns)
+        results['rolling_vol'] = _utils.rolling_volatility(
+            returns,
+            window=rolling
+        )
+        
+        results['bm_rolling_vol'] = _utils.rolling_volatility(
+            returns,
+            window=rolling
+        )
+         
         results['rolling_sharpe'] = _utils.rolling_sharpe(
             returns,
             window=rolling
@@ -160,6 +172,17 @@ class Backtester:
             returns,
             window=rolling
         )
+        
+        greeks = _utils.greeks(returns, bm_returns)
+        results['alpha'] = greeks['alpha']
+        results['beta'] = greeks['beta']
+        
+        greeks_rs = _utils.rolling_greeks(returns, bm_returns, periods=126)
+        greeks_ry = _utils.rolling_greeks(returns, bm_returns)
+        results['rolling_alpha_6m'] = greeks_rs['alpha']
+        results['rolling_beta_6m'] = greeks_rs['beta']
+        results['rolling_alpha_1y'] = greeks_ry['alpha']
+        results['rolling_beta_1y'] = greeks_ry['beta']
         
         # trades
         results['time_in_market'] = _utils.time_in_market(results['returns'])
@@ -311,6 +334,43 @@ class Backtester:
         plt.axhline(0, color='black')
         plt.xticks(rotation=45)
         plt.show()
+        
+    
+    def returns_plot(self):
+        plt.figure()
+        plt.title('Daily Returns')
+        plt.plot(self.__results['returns'])
+        plt.show()
+        
+        
+    def rolling_beta_plot(self):
+        plt.figure()
+        plt.title('Rolling Beta to Benchmark')
+        plt.plot(self.__results['rolling_beta_6m'], label='6-months')
+        plt.plot(self.__results['rolling_beta_1y'], label='12-months')
+        plt.axhline(
+            self.__results['beta'], color='red', linestyle='--', label='Beta'
+        )
+        
+        plt.axhline(0, color='black')
+        plt.xticks(rotation=45)
+        plt.legend()
+        plt.show()
+    
+    
+    def rolling_vol_plot(self):
+        plt.figure()
+        plt.title('Rolling Volatility')
+        plt.plot(self.__results['rolling_vol'], label='Strategy')
+        plt.plot(self.__results['bm_rolling_vol'], label='Benchmark')
+        plt.axhline(
+            self.__results['volatility'], color='red', linestyle='--', label='Beta'
+        )
+        
+        plt.axhline(0, color='black')
+        plt.xticks(rotation=45)
+        plt.legend()
+        plt.show()
     
     
     def show_report(self):
@@ -319,6 +379,8 @@ class Backtester:
         self.underwater_plot()
         self.rolling_sharpe_plot()
         self.rolling_sortino_plot()
+        self.rolling_beta_plot()
+        self.returns_plot()
     
     
     def optimize(self, strategy, broker, param_grid,

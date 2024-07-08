@@ -4,6 +4,13 @@ import datetime
 from itertools import product
 
 
+# tools
+def dict_combinations(d):
+    for vcomb in product(*d.values()):
+        yield dict(zip(d.keys(), vcomb))
+
+
+# stats
 def cum_return(equity):
     return equity[-1]/equity[0] - 1
 
@@ -112,6 +119,13 @@ def volatility(returns, periods=252, annualize=True):
     return std
 
 
+def rolling_volatility(returns, window=126, periods=252, annualize=True):
+    std = returns.rolling(window).std()
+    if annualize:
+        return std * np.sqrt(periods)
+    return std
+
+
 def sharpe(returns, periods=252, rf=0.0, annualize=True):
     res = returns.mean() / returns.std()
     if annualize: 
@@ -156,9 +170,41 @@ def rolling_sortino(returns, window = 50, periods=252, rf=0.0, annualize=True):
 
 def moving_average(prices, window):
     return sum(prices)/window
-
-
-def dict_combinations(d):
-    for vcomb in product(*d.values()):
-        yield dict(zip(d.keys(), vcomb))
         
+        
+def greeks(returns, benchmark, periods=252.0):
+    """Calculates alpha and beta of the portfolio"""
+
+    # find covariance
+    matrix = np.cov(returns.fillna(0), benchmark.fillna(0))
+    beta = matrix[0, 1] / matrix[1, 1]
+
+    # calculates measures now
+    alpha = returns.mean() - beta * benchmark.mean()
+    alpha = alpha * periods
+
+    return pd.Series(
+        {
+            "beta": beta,
+            "alpha": alpha,
+        }
+    ).fillna(0)
+
+
+def rolling_greeks(returns, benchmark, periods=252):
+    """Calculates rolling alpha and beta of the portfolio"""
+    df = pd.DataFrame(
+        data={
+            "returns": returns,
+            "benchmark": benchmark,
+        }
+    )
+    df = df.fillna(0)
+    corr = df.rolling(int(periods)).corr().unstack()["returns"]["benchmark"]
+    std = df.rolling(int(periods)).std()
+    beta = corr * std["returns"] / std["benchmark"]
+
+    alpha = df["returns"].mean() - beta * df["benchmark"].mean()
+
+    alpha = alpha * periods
+    return pd.DataFrame(index=returns.index, data={"beta": beta, "alpha": alpha})
