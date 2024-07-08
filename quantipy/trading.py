@@ -523,6 +523,8 @@ class Broker:
                     max(stop_price or open, order.limit)
                 )
                 
+                self.logger.debug(f'Limit order filled @ {price}')
+                
             else:
                 # Market order
                 price = prev_close if self.__trade_on_close else open
@@ -531,6 +533,8 @@ class Broker:
                     if order.is_long else
                     min(price, stop_price or np.inf)
                 )
+                
+                self.logger.debug(f'Market order filled @ {price}')
             
             is_market_order = not order.limit and not stop_price
             time_index = (

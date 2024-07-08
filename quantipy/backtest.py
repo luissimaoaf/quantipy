@@ -52,7 +52,7 @@ class Backtester:
         self.__strategy = strategy
         logger = broker.logger
         # not sure why +1 is bugging out
-        start = self.__strategy.history + 2
+        start = self.__strategy.history + 1
         equity = np.zeros(self.__len_data)
         self.__equity = pd.Series(equity, index=self.__dates)
         self.__history = start
@@ -69,16 +69,19 @@ class Backtester:
         
         for i in range(start, self.__len_data):
             data = self.__data
-            data = {k : v.iloc[:i] for k, v in data.items()}
+            data = {k : v.iloc[:i+1] for k, v in data.items()}
                 
             # Update the broker with new i
             broker = broker._replace(data = data, i = i)
+            broker.logger.debug(f'Current tick: {self.__dates[i]}')
+            broker.logger.debug(self.__data['SPY'].iloc[i])
             
             # Process the orders
             broker._process_orders()
             
             
             # Update equity
+            broker.logger.debug(f"Current equity: {broker.equity}")
             self.__equity.iloc[i] = broker.equity
             
             if self.__equity.iloc[i] <= 0:
@@ -160,7 +163,7 @@ class Backtester:
         )
         
         results['bm_rolling_vol'] = _utils.rolling_volatility(
-            returns,
+            bm_returns,
             window=rolling
         )
          
@@ -226,6 +229,41 @@ class Backtester:
         equity = pd.DataFrame(equity)
         dd, rolling_dd = _utils.compute_rolling_drawdown(equity, window)
         self.__results['rolling_dd'] = rolling_dd
+        
+        
+    def optimize(self, strategy, broker, param_grid,
+                 metric, minimize=False, save_logs=False, benchmark=None):
+
+        print('Preparing optimization...')
+        broker.logger.debug('Preparing optimization...')
+        param_combinations = _utils.dict_combinations(param_grid)
+        max_score = -np.inf
+        sign = -1 if minimize else 1
+        
+        print('Starting optimization...')
+        broker.logger.debug('Starting optimization...')
+        
+        for params in param_combinations:
+            strategy.params = params
+            print(params)
+            broker.logger.debug(params)
+            new_broker = deepcopy(broker)
+            self.run(strategy, new_broker, save_logs=save_logs)
+            
+            new_score = metric(self.__backtest['equity']) * sign
+            
+            print(f'Score: {new_score}')
+            broker.logger.debug(f'Score: {new_score}')
+            
+            if new_score > max_score:
+                opt_results = self.__backtest
+                max_score = new_score
+                opt_results['best_params'] = params
+        
+        self.process_results(results=opt_results, benchmark=benchmark)
+        opt_results['broker'] = broker
+    
+        return opt_results
 
     
     def show_results(self):
@@ -241,6 +279,7 @@ class Backtester:
         avg_loss = f"{'Avg loss (day):':<15}{results['avg_loss']:>10.2%}{results['bm_avg_loss']:>15.2%}"
         avg_gain = f"{'Avg gain (day):':<15}{results['avg_gain']:>10.2%}{results['bm_avg_gain']:>15.2%}"
         vol = f"{'Volatility:':<15}{results['volatility']:>10.4f}{results['bm_volatility']:>15.4f}"
+        vol = f"{'Beta (BM):':<15}{results['beta']:>10.4f}{'1':>15}"
         sharpe = f"{'Sharpe Ratio:':<15}{results['sharpe']:>10.4f}{results['bm_sharpe']:>15.4f}"
         sortino = f"{'Sortino Ratio:':<15}{results['sortino']:>10.4f}{results['bm_sortino']:>15.4f}"
         max_dd = f"{'Max Drawdown:':<15}{results['max_drawdown']:>10.2%}{results['bm_max_drawdown']:>15.2%}"
@@ -379,37 +418,6 @@ class Backtester:
         self.underwater_plot()
         self.rolling_sharpe_plot()
         self.rolling_sortino_plot()
+        self.rolling_vol_plot()
         self.rolling_beta_plot()
         self.returns_plot()
-    
-    
-    def optimize(self, strategy, broker, param_grid,
-                 target='final_equity', minimize=False,
-                 save_logs=False, benchmark=None):
-
-        param_combinations = _utils.dict_combinations(param_grid)
-        max_score = -np.inf
-        sign = -1 if minimize else 1
-        broker.logger.debug('starting optimization...')
-        
-        for params in param_combinations:
-            strategy.params = params
-            print(params)
-            broker.logger.debug(params)
-            new_broker = deepcopy(broker)
-            self.run(strategy, new_broker, save_logs=save_logs)
-            self.process_results(benchmark=benchmark)
-            
-            new_score = self.__results[target] * sign
-            print(f'Score: {new_score}')
-            broker.logger.debug(f'Score: {new_score}')
-            if new_score > max_score:
-                opt_results = self.__results
-                max_score = opt_results[target]
-                opt_results['best_params'] = params
-        
-        opt_results['broker'] = broker
-        
-        self.__results = opt_results
-        return opt_results
-                

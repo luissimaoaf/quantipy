@@ -104,7 +104,10 @@ def avg_trade_loss(trades):
 
 def wl_ratio(trades):
     wins = len([trade for trade in trades if trade.pnl>0])
-    return wins/(len(trades) - wins)
+    if len(trades) == wins:
+        return np.inf
+    else:
+        return wins/(len(trades) - wins)
 
 
 def win_pct(trades):
