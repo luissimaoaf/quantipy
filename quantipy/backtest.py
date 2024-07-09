@@ -15,6 +15,10 @@ from quantipy.assets import Currency
 from quantipy.trading import Broker, Strategy
 
 
+class OutOfEquityError(Exception):
+    pass
+
+
 class Backtester:
     
     def __init__(self, data: dict[str:pd.DataFrame]):
@@ -45,36 +49,15 @@ class Backtester:
         self.__backtest = None
         self.__results = None
         self.__benchmark = None
-        
-        
-    def run(self, strategy, broker, log_file='backtest.log', save_logs=False):
-
-        self.__strategy = strategy
-        logger = broker.logger
-        # not sure why +1 is bugging out
-        start = self.__strategy.history + 1
-        equity = np.zeros(self.__len_data)
-        self.__equity = pd.Series(equity, index=self.__dates)
-        self.__history = start
-        
-        if save_logs:
-            logger.setLevel(logging.DEBUG)
-            # create file handler which logs even debug messages
-            fh = logging.FileHandler(log_file)
-            fh.setLevel(logging.DEBUG)
-            logger.addHandler(fh)
-        
-        # Running the backtest
-        logger.debug('Starting backtest...')
-        
-        for i in range(start, self.__len_data):
-            data = self.__data
-            data = {k : v.iloc[:i+1] for k, v in data.items()}
+    
+    
+    def next(self, broker, i):
+            data = {k : v.iloc[:i+1] for k, v in self.__data.items()}
                 
             # Update the broker with new i
             broker = broker._replace(data = data, i = i)
-            broker.logger.debug(f'Current tick: {self.__dates[i]}')
-            broker.logger.debug(self.__data['SPY'].iloc[i])
+            broker.logger.debug(f'\nNext tick: {self.__dates[i]}')
+            broker.logger.debug(f"Last close: {self.__data['SPY']['Close'].iloc[i]}")
             
             # Process the orders
             broker._process_orders()
@@ -86,16 +69,48 @@ class Backtester:
             
             if self.__equity.iloc[i] <= 0:
                 self.__equity = self.__equity.iloc[:i+1]
-                logger.warning('Out of equity.')
-                break
+                broker.logger.warning('Out of equity.')
+                raise OutOfEquityError
             
             # Run strategy on new tick
             self.__strategy.next(broker)
+                
         
+    def run(self, strategy, broker, save_logs=False,
+            log_file=None, log_location='./logs'):
+
+        self.__strategy = strategy
+        logger = broker.logger
+        # not sure why +1 is bugging out
+        start = self.__strategy.history + 1
+        equity = np.zeros(self.__len_data)
+        self.__equity = pd.Series(equity, index=self.__dates)
+        self.__history = start
+        
+        if save_logs:
+            broker.logger.setLevel(logging.DEBUG)
+            # create file handler which logs even debug messages
+            file_name = log_file
+            if not file_name:
+                n_files = len(os.listdir(log_location))
+                file_name = log_location + '/backtest' + str(n_files) + '.log'
+            
+            fh = logging.FileHandler(file_name)
+            fh.setLevel(logging.DEBUG)
+            logger.addHandler(fh)
+        
+        # Running the backtest
+        broker.logger.debug('Starting backtest...')
+        
+        for i in range(start, self.__len_data):
+            try:
+                self.next(broker, i)
+            except OutOfEquityError:
+                break
+            
         # Closing all remaining open trades
         for trade in broker.trades:
             trade.close()
-        
         broker._process_orders()
         broker.logger.debug(broker.trades)
         
@@ -144,6 +159,11 @@ class Backtester:
         
         results['cum_return'] = _utils.cum_return(results['equity'])
         results['bm_cum_return'] = _utils.cum_return(bm_equity)
+
+        
+        results['equity_volmatch'] = _utils.match_vol(
+            results['returns'], results['bm_returns']
+        )
         
         results['avg_loss'] = _utils.avg_loss(returns)
         results['avg_gain'] = _utils.avg_gain(returns)
@@ -330,6 +350,27 @@ class Backtester:
         plt.legend()
         plt.axhline(0, color='black')
         plt.xticks(rotation=45)
+        plt.grid(True)
+        plt.show()
+        
+        
+    def volmatch_plot(self):
+        plt.figure()
+        plt.title('Volatility Matched Equity')
+        
+        strat_equity = self.__results['equity_volmatch']-1
+        history = self.__strategy.history
+        plt.plot(strat_equity, label='Strategy')
+        
+        if self.__benchmark:
+            benchmark = self.__data[self.__benchmark]['Close'].iloc[history:]
+            plt.plot(benchmark/benchmark[0]-1, label='Benchmark')
+        
+        plt.gca().set_yticklabels([f'{x:.0%}' for x in plt.gca().get_yticks()])
+        plt.legend()
+        plt.axhline(0, color='black')
+        plt.xticks(rotation=45)
+        plt.grid(True)
         plt.show()
     
     
@@ -347,6 +388,7 @@ class Backtester:
         plt.axhline(0, color='black')
         plt.xticks(rotation=45)
         plt.legend()
+        plt.grid(True)
         plt.show()
         
     
@@ -360,6 +402,7 @@ class Backtester:
         
         plt.axhline(0, color='black')
         plt.xticks(rotation=45)
+        plt.grid(True)
         plt.show()
 
 
@@ -372,6 +415,7 @@ class Backtester:
         plt.axhline(sortino, color='red', linestyle='--')
         plt.axhline(0, color='black')
         plt.xticks(rotation=45)
+        plt.grid(True)
         plt.show()
         
     
@@ -379,6 +423,9 @@ class Backtester:
         plt.figure()
         plt.title('Daily Returns')
         plt.plot(self.__results['returns'])
+        plt.gca().set_yticklabels([f'{x:.2%}' for x in plt.gca().get_yticks()])
+        plt.axhline(0, color='black')
+        plt.axhline(self.__results['returns'].mean(), color='red', linestyle='--')
         plt.show()
         
         
@@ -394,6 +441,7 @@ class Backtester:
         plt.axhline(0, color='black')
         plt.xticks(rotation=45)
         plt.legend()
+        plt.grid(True)
         plt.show()
     
     
@@ -409,12 +457,14 @@ class Backtester:
         plt.axhline(0, color='black')
         plt.xticks(rotation=45)
         plt.legend()
+        plt.grid(True)
         plt.show()
     
     
     def show_report(self):
         self.show_results()
         self.equity_plot()
+        self.volmatch_plot()
         self.underwater_plot()
         self.rolling_sharpe_plot()
         self.rolling_sortino_plot()

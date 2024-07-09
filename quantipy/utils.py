@@ -54,6 +54,14 @@ def compute_returns(equity):
     return (equity - equity.shift(1))/equity.shift(1)
 
 
+def match_vol(returns, benchmark):
+    vol = volatility(returns)
+    bm_vol = volatility(benchmark)
+    scaled_ret = returns * bm_vol/vol
+    match_equity = (1+scaled_ret).cumprod().fillna(1)
+    return match_equity
+
+
 def time_in_market(returns):
     ticks_out = (abs(returns) < 1e-16)
     tim = 1 - sum(ticks_out)/len(returns)
