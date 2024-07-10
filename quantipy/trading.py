@@ -844,5 +844,21 @@ class TripleMovingAverage(Strategy):
                     broker.logger.debug('liquidate short position')
      
 
+class BuyAndHold(Strategy):
+    def __init__(self, assets, params):
+        super().__init__(assets, params)
+        self.__buy = 1
+    
+    @property
+    def asset(self):
+        return self._Strategy__assets[0]
+    
+    def next(self, broker):
+        if self.__buy:
+            broker.logger.debug('Placing buy order')
+            self.buy(self.asset, broker)
+            self.__buy = 0
+
+
 if __name__ == '__main__':
     print("It worked!")
