@@ -282,6 +282,7 @@ class Backtester:
         
         self.process_results(results=opt_results, benchmark=benchmark)
         opt_results['broker'] = broker
+        strategy.params = opt_results['best_params']
     
         return opt_results
 
@@ -377,8 +378,9 @@ class Backtester:
     def underwater_plot(self):
         plt.figure()
         plt.title('Underwater plot')
-        
-        plt.plot(self.__results['tick_drawdown'], label='Drawdown (tick)')
+        ser = self.__results['tick_drawdown']
+        plt.plot(ser, label='Drawdown (tick)')  
+        plt.fill_between(ser.index, ser, alpha=0.5)
         plt.plot(self.__results['drawdown'], label='Maximum Drawdown')
         
         dd = self.__results['avg_drawdown']
@@ -451,7 +453,7 @@ class Backtester:
         plt.plot(self.__results['rolling_vol'], label='Strategy')
         plt.plot(self.__results['bm_rolling_vol'], label='Benchmark')
         plt.axhline(
-            self.__results['volatility'], color='red', linestyle='--', label='Beta'
+            self.__results['volatility'], color='red', linestyle='--', label='Vol'
         )
         
         plt.axhline(0, color='black')
