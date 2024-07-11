@@ -177,6 +177,22 @@ class Trade:
         return self.__tp_order
     
     @property
+    def entry_price(self) -> float:
+        return self.__entry_price
+    
+    @property
+    def exit_price(self) -> float:
+        return self.__exit_price
+    
+    @property
+    def entry_bar(self):
+        return self.__entry_bar
+    
+    @property
+    def exit_bar(self):
+        return self.__exit_bar
+    
+    @property
     def value(self) -> float:
         pass     
     
@@ -333,7 +349,16 @@ class Broker:
                           for trade in self.trades)
         return max(0, self.equity - margin_used)
     
+    @property
+    def open_trades(self):
+        return [trade for trade in self.trades
+                if trade not in self.closed_trades]
+     
     # Main methods
+    
+    def _update_positions(self):
+        return [Position(trade.asset, trade.size)
+                for trade in self.open_trades]
     
     def last_price(self, asset) -> float:
         data = self.__data[asset.symbol]

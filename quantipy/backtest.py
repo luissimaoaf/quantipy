@@ -61,7 +61,7 @@ class Backtester:
             
             # Process the orders
             broker._process_orders()
-            
+            broker._update_positions()
             
             # Update equity
             broker.logger.debug(f"Current equity: {broker.equity}")
@@ -218,6 +218,10 @@ class Backtester:
         results['wl_ratio'] = _utils.wl_ratio(results['trades'])
         results['win_pct'] = _utils.win_pct(results['trades'])
         
+        results['avg_trade_len'] = _utils.avg_trade_duration(results['trades'])
+        results['avg_win_len'] = _utils.avg_win_duration(results['trades'])
+        results['avg_loss_len'] = _utils.avg_loss_duration(results['trades'])
+        
         # drawdown calculations
         results['tick_drawdown'] = tick_dd
         results['drawdown'] =  max_dd
@@ -322,6 +326,9 @@ class Backtester:
         avg_trade_loss = f"{'Avg Loss:':<15}{results['avg_trade_loss']:>10.2%}"
         wl_ratio = f"{'Win/Loss ratio:':<15}{results['wl_ratio']:>10.2f}"
         win_pct = f"{'Win %:':<15}{results['win_pct']:>10.2%}"
+        trade_len = f"{'Avg Trade Len:':<15}{results['avg_trade_len']:>10.0f}"
+        win_len = f"{'Avg Win Len:':<15}{results['avg_win_len']:>10.0f}"
+        loss_len = f"{'Avg Loss Len:':<15}{results['avg_loss_len']:>10.0f}"
         
         print(
             title,
@@ -336,6 +343,7 @@ class Backtester:
             best_win, avg_trade_win, 
             worst_loss, avg_trade_loss,
             wl_ratio, win_pct,
+            trade_len, win_len, loss_len,
             sep="\n"
         )
    

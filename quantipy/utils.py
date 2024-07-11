@@ -110,6 +110,24 @@ def avg_trade_loss(trades):
         return 0
 
 
+def avg_trade_duration(trades):
+    dur = [trade.exit_bar - trade.entry_bar for trade in trades]
+    return np.mean(dur)
+
+
+def avg_win_duration(trades):
+    dur = [trade.exit_bar - trade.entry_bar for trade in trades
+           if trade.pnl > 0]
+    return np.mean(dur)
+
+
+def avg_loss_duration(trades):
+    dur = [trade.exit_bar - trade.entry_bar for trade in trades
+           if trade.pnl <= 0]
+    
+    return np.mean(dur)
+
+
 def wl_ratio(trades):
     wins = len([trade for trade in trades if trade.pnl>0])
     if len(trades) == wins:
