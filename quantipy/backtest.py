@@ -83,9 +83,9 @@ class Backtester:
         logger = broker.logger
         # not sure why +1 is bugging out
         start = self.__strategy.history + 1
+        self.__history = start
         equity = np.zeros(self.__len_data)
         self.__equity = pd.Series(equity, index=self.__dates)
-        self.__history = start
         
         if save_logs:
             broker.logger.setLevel(logging.DEBUG)
@@ -139,7 +139,8 @@ class Backtester:
         if results is None:
             results = self.__backtest
         
-        bm_equity = self.__data[benchmark]['Close']
+        start = results['equity'].index[0]
+        bm_equity = self.__data[benchmark]['Close'].loc[start:]
 
         tick_dd, max_dd = _utils.compute_drawdown(results['equity'])
         bm_tick_dd, bm_max_dd = _utils.compute_drawdown(bm_equity)
@@ -149,7 +150,7 @@ class Backtester:
         results['bm_final_equity'] = bm_equity[-1]
         
         returns = _utils.compute_returns(results['equity'])
-        bm_returns = _utils.compute_returns(bm_equity)[self.__history:]
+        bm_returns = _utils.compute_returns(bm_equity)
         
         results['returns'] = returns
         results['bm_returns'] = bm_returns
@@ -256,6 +257,7 @@ class Backtester:
 
         print('Preparing optimization...')
         broker.logger.debug('Preparing optimization...')
+
         param_combinations = _utils.dict_combinations(param_grid)
         max_score = -np.inf
         sign = -1 if minimize else 1
@@ -280,6 +282,9 @@ class Backtester:
                 max_score = new_score
                 opt_results['best_params'] = params
         
+        print(f"Optimal parameters: {opt_results['best_params']}")
+        self.__backtest = opt_results
+        self.__equity = opt_results['equity']
         self.process_results(results=opt_results, benchmark=benchmark)
         opt_results['broker'] = broker
         strategy.params = opt_results['best_params']
@@ -357,7 +362,7 @@ class Backtester:
         
     def volmatch_plot(self):
         plt.figure()
-        plt.title('Volatility Matched Equity')
+        plt.title('Equity (Volatility Matched)')
         
         strat_equity = self.__results['equity_volmatch']-1
         history = self.__strategy.history
